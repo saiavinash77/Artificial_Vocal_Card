@@ -1,0 +1,362 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                   AVC (ARTIFICIAL VOCAL CORD) SYSTEM FLOW                      ║
+║                      COMPLETE VISUAL ARCHITECTURE                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                          USER LAYER                                            │
+│                                                                              │
+│                    👤 PATIENT WEARS MASK                                     │
+│                    attempts to speak naturally                               │
+└────────────────────────────────────┬─────────────────────────────────────────┘
+                                     │
+                                     ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                    LAYER 1: SENSORS & DATA CAPTURE                            │
+│                                                                              │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐ │
+│  │  🎤 PVDF     │    │  🎙️ MEMS     │    │  🌡️ PRESSURE │    │  💨 AIRFLOW  │ │
+│  │  PIEZO       │    │  MICROPHONE   │    │  SENSOR      │    │  SENSOR      │ │
+│  │              │    │              │    │              │    │              │ │
+│  │  Vibration   │    │  Acoustic    │    │  Breath      │    │  Velocity    │ │
+│  │  Capture     │    │  Capture     │    │  Pressure    │    │  Capture     │ │
+│  │              │    │              │    │              │    │              │ │
+│  │  32-bit ADC  │    │  I2S @16kHz  │    │  I2C @100Hz  │    │  I2C @100Hz  │ │
+│  │  @1kHz       │    │  16-bit      │    │  ±2kPa range │    │  0-30 m/s    │ │
+│  └──────┬───────┘    └──────┬───────┘    └──────┬───────┘    └──────┬───────┘ │
+│         │                   │                   │                   │         │
+│         └───────────────────┼───────────────────┼───────────────────┘         │
+│                             │                   │                             │
+│                             ▼                   ▼                             │
+│              ┌──────────────────────────────────────────┐                      │
+│              │         ⚡ ESP32-S3 MICROCONTROLLER        │                      │
+│              │                                          │                      │
+│              │  🔧 Xtensa LX7 Dual-Core @240MHz         │                      │
+│              │  💾 512KB SRAM + 8MB PSRAM              │                      │
+│              │  🔄 Multi-sensor synchronization           │                      │
+│              │  📦 500ms ring buffer                    │                      │
+│              │  📡 WiFi 4 + BLE 5.0 connectivity         │                      │
+│              │  🔋 USB-C 5V / Li-Po 3.7V 2000mAh         │                      │
+│              │  ⏱️ 6+ hours continuous operation         │                      │
+│              └──────────────────┬───────────────────────┘                      │
+│                                 │                                               │
+│                                 ▼                                               │
+│              ┌──────────────────────────────────────────┐                      │
+│              │        🔐 SECURE DATA STREAMING            │                      │
+│              │                                          │                      │
+│              │  Protocol: UDP over WiFi                  │                      │
+│              │  Encryption: DTLS 1.3 / AES-256-GCM       │                      │
+│              │  Rate: ~50 KB/s aggregate                 │                      │
+│              │  Reliability: Application-layer ACK        │                      │
+│              │  Error Detection: CRC16                    │                      │
+│              └──────────────────┬───────────────────────┘                      │
+└────────────────────────────────────┬─────────────────────────────────────────┘
+                                     │
+                                     ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│              LAYER 2: CLOUD INFRASTRUCTURE - INGESTION & PROCESSING            │
+│                                                                              │
+│              ┌──────────────────────────────────────────┐                      │
+│              │       ☁️ AWS KINESIS / APACHE KAFKA       │                      │
+│              │                                          │                      │
+│              │  📥 Real-time stream ingestion            │                      │
+│              │  📦 Protobuf packet parsing              │                      │
+│              │  🔢 Sequence validation                  │                      │
+│              │  🕐 Timestamp synchronization            │                      │
+│              │  📊 Sensor frame de-interleaving         │                      │
+│              └──────────────────┬───────────────────────┘                      │
+│                                 │                                               │
+│                                 ▼                                               │
+│              ┌──────────────────────────────────────────┐                      │
+│              │      🔧 FEATURE ENGINEERING PIPELINE      │                      │
+│              │          (AWS Lambda / Python)           │                      │
+│              │                                          │                      │
+│              │  INPUT: Raw sensor streams (4 signals)   │                      │
+│              │  OUTPUT: 13-descriptor feature vector     │                      │
+│              │                                          │                      │
+│              │  📊 13 ENGINEERED DESCRIPTORS:            │                      │
+│              │  ┌─────────────────────────────────┐    │                      │
+│              │  │ 1. RMS Amplitude ⭐ (SHAP: 0.41) │    │                      │
+│              │  │ 2. SPL (dB)                     │    │                      │
+│              │  │ 3. Pressure (Pa)                │    │                      │
+│              │  │ 4. Velocity (m/s)               │    │                      │
+│              │  │ 5. Duration (ms)                 │    │                      │
+│              │  │ 6. Energy Ratio                 │    │                      │
+│              │  │ 7. Duration Norm                │    │                      │
+│              │  │ 8. SPL/Velocity Ratio           │    │                      │
+│              │  │ 9. Pressure/RMS Ratio          │    │                      │
+│              │  │ 10. ΔRMS (temporal change)      │    │                      │
+│              │  │ 11. ΔSPL (temporal change)      │    │                      │
+│              │  │ 12. ΔPressure (temporal change) │    │                      │
+│              │  │ 13. Phoneme-Class (categorical) │    │                      │
+│              │  └─────────────────────────────────┘    │                      │
+│              │                                          │                      │
+│              │  ⚡ Processing: <100ms per utterance     │                      │
+│              │  📏 Normalization: Z-score / Min-Max    │                      │
+│              └──────────────────┬───────────────────────┘                      │
+└────────────────────────────────────┬─────────────────────────────────────────┘
+                                     │
+                                     ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                  LAYER 3: AI/ML INFERENCE ENGINE                               │
+│                                                                              │
+│              ┌──────────────────────────────────────────┐                      │
+│              │       🧠 CNN-BiLSTM-ATTENTION MODEL       │                      │
+│              │       (~5.5M trainable parameters)      │                      │
+│              │                                          │                      │
+│              │  INPUT: (Batch, Time, 13 descriptors)     │                      │
+│              │  OUTPUT: Phoneme probability distribution │                      │
+│              └──────────────────┬───────────────────────┘                      │
+│                                 │                                               │
+│         ┌───────────────────────┼───────────────────────┐                      │
+│         │                       │                       │                      │
+│         ▼                       ▼                       ▼                      │
+│  ┌──────────────┐      ┌──────────────┐      ┌──────────────┐                 │
+│  │ 📐 INPUT     │      │ 🔍 CNN       │      │ ⏱️ BiLSTM    │                 │
+│  │ PROJECTION   │      │ FEATURE      │      │ TEMPORAL     │                 │
+│  │              │      │ EXTRACTOR    │      │ MODELING     │                 │
+│  │ Linear 13→32 │      │              │      │              │                 │
+│  │ + GELU + LN  │      │ 3× Conv1d    │      │ 3× BiLSTM    │                 │
+│  │ ~448 params  │      │ 64→128→256   │      │ 256 hidden    │                 │
+│  │ (B,T,13)→    │      │ k=3, BN+GELU │      │ bidirectional │                 │
+│  │ (B,T,32)     │      │ ~129K params │      │ ~4.2M params │                 │
+│  └──────┬───────┘      └──────┬───────┘      └──────┬───────┘                 │
+│         │                     │                     │                         │
+│         └─────────────────────┼─────────────────────┘                         │
+│                               │                                               │
+│                               ▼                                               │
+│              ┌──────────────────────────────────────────┐                      │
+│              │       👁️ SELF-ATTENTION MECHANISM         │                      │
+│              │                                          │                      │
+│              │  🔹 4 Multi-Head Attention (d_k=128)      │                      │
+│              │  🔗 Residual connections                 │                      │
+│              │  📏 Layer Normalization                   │                      │
+│              │  ⚙️ ~1.05M parameters                     │                      │
+│              │                                          │                      │
+│              │  PURPOSE: Contextual refinement of       │                      │
+│              │           latent representations         │                      │
+│              └──────────────────┬───────────────────────┘                      │
+│                                 │                                               │
+│                                 ▼                                               │
+│              ┌──────────────────────────────────────────┐                      │
+│              │       🎯 CLASSIFICATION HEAD             │                      │
+│              │                                          │                      │
+│              │  LayerNorm + FC(512→256) + GELU         │                      │
+│              │  Dropout + FC(256→C) C=phoneme classes   │                      │
+│              │  Softmax activation                      │                      │
+│              │  Label smoothing (ε=0.1)                 │                      │
+│              │  ~132K parameters                        │                      │
+│              └──────────────────┬───────────────────────┘                      │
+│                                 │                                               │
+│                                 ▼                                               │
+│              Predicted phoneme sequence with confidence scores                │
+└────────────────────────────────────┬─────────────────────────────────────────┘
+                                     │
+                                     ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│              LAYER 4: LANGUAGE PROCESSING & SPEECH SYNTHESIS                    │
+│                                                                              │
+│              ┌──────────────────────────────────────────┐                      │
+│              │       📚 PHONEME-TO-WORD CONVERSION       │                      │
+│              └──────────────────┬───────────────────────┘                      │
+│                                 │                                               │
+│         ┌───────────────────────┼───────────────────────┐                      │
+│         │                       │                       │                      │
+│         ▼                       ▼                       ▼                      │
+│  ┌──────────────┐      ┌──────────────┐      ┌──────────────┐                 │
+│  │ 📖 CMU       │      │ 🔄 EDIT-     │      │ 🔍 BEAM     │                 │
+│  │ DICTIONARY   │      │ DISTANCE     │      │ SEARCH       │                 │
+│  │ ALIGNMENT    │      │ RECOVERY     │      │ (width=3)    │                 │
+│  │              │      │              │      │              │                 │
+│  │ Dynamic prog │      │ Levenshtein  │      │ Top-k        │                 │
+│  │ Segmentation │      │ distance     │      │ candidates   │                 │
+│  │ Phonetic     │      │ Approximate   │      │ Sequence     │                 │
+│  │ matching     │      │ matching     │      │ compose      │                 │
+│  └──────┬───────┘      └──────┬───────┘      └──────┬───────┘                 │
+│         │                     │                     │                         │
+│         └─────────────────────┼─────────────────────┘                         │
+│                               │                                               │
+│                               ▼                                               │
+│              ┌──────────────────────────────────────────┐                      │
+│              │       🤖 LANGUAGE MODEL RE-RANKING       │                      │
+│              │                                          │                      │
+│              │  MODEL: GPT-2 / DistilGPT-2 / Indic-LM   │                      │
+│              │  (HuggingFace Transformers)             │                      │
+│              │                                          │                      │
+│              │  PROCESS:                                │                      │
+│              │  Score = -Loss_LM(sentence)              │                      │
+│              │  Lower perplexity = higher plausibility  │                      │
+│              │  Top-1 candidate selection             │                      │
+│              │                                          │                      │
+│              │  PURPOSE: Ensure linguistic plausibility  │                      │
+│              └──────────────────┬───────────────────────┘                      │
+│                                 │                                               │
+│                                 ▼                                               │
+│              ┌──────────────────────────────────────────┐                      │
+│              │       🎤 TEXT-TO-SPEECH SYNTHESIS        │                      │
+│              └──────────────────┬───────────────────────┘                      │
+│                                 │                                               │
+│         ┌───────────────────────┼───────────────────────┐                      │
+│         │                       │                       │                      │
+│         ▼                       ▼                       ▼                      │
+│  ┌──────────────┐      ┌──────────────┐      ┌──────────────┐                 │
+│  │ 🗣️ FAST-    │      │ 🎵 HIFI-     │      │ 👤 SPEAKER   │                 │
+│  │ SPEECH2     │      │ GAN          │      │ EMBEDDING   │                 │
+│  │ (Acoustic)  │      │ (Vocoder)    │      │              │                 │
+│  │              │      │              │      │ d-vector/    │                 │
+│  │ Non-auto     │      │ GAN-based    │      │ x-vector     │                 │
+│  │ regressive   │      │ waveform     │      │ 256-dim      │                 │
+│  │ Parallel     │      │ synthesis    │      │ 5-min sample │                 │
+│  │ mel-gen      │      │ Real-time    │      │ Personalize  │                 │
+│  │ <100ms       │      │ Near-human   │      │              │                 │
+│  └──────┬───────┘      └──────┬───────┘      └──────┬───────┘                 │
+│         │                     │                     │                         │
+│         └─────────────────────┼─────────────────────┘                         │
+│                               │                                               │
+│                               ▼                                               │
+│              ┌──────────────────────────────────────────┐                      │
+│              │       🔊 FINAL AUDIO OUTPUT              │                      │
+│              │                                          │                      │
+│              │  Format: 16-bit PCM WAV                  │                      │
+│              │  Sample rate: 22.05 kHz                  │                      │
+│              │  Quality: MOS ≥3.5/5.0                   │                      │
+│              │  Latency: <200ms per utterance           │                      │
+│              │  Runtime: ONNX Runtime / TensorRT        │                      │
+│              └──────────────────┬───────────────────────┘                      │
+└────────────────────────────────────┬─────────────────────────────────────────┘
+                                     │
+                                     ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                  LAYER 5: USER EXPERIENCE & APPLICATIONS                        │
+│                                                                              │
+│              ┌──────────────────────────────────────────┐                      │
+│              │       📱 ANDROID COMPANION APP            │                      │
+│              │                                          │                      │
+│              │  🔊 Real-time audio playback              │                      │
+│              │  🔗 BLE 5.0 device pairing               │                      │
+│              │  👤 Voice profile management              │                      │
+│              │  ⚙️ Device calibration                    │                      │
+│              │  🔄 OTA firmware updates                  │                      │
+│              │  💾 Offline phrase cache (50 phrases)    │                      │
+│              │  🌐 Multi-language (Hindi, Telugu)        │                      │
+│              │  ⚡ End-to-end latency: <500ms           │                      │
+│              └──────────────────┬───────────────────────┘                      │
+│                                 │                                               │
+│                                 ▼                                               │
+│              ┌──────────────────────────────────────────┐                      │
+│              │       👨‍⚕️ CLINICIAN DASHBOARD              │                      │
+│              │                                          │                      │
+│              │  📊 Daily usage time tracking              │                      │
+│              │  📈 Phoneme accuracy trends               │                      │
+│              │  🐛 Error log analysis                    │                      │
+│              │  🏥 Patient progress monitoring           │                      │
+│              │  🔧 Calibration tools                     │                      │
+│              │  🔒 HIPAA/GDPR compliant                  │                      │
+│              │  👥 Role-based access control             │                      │
+│              └──────────────────┬───────────────────────┘                      │
+│                                 │                                               │
+│                                 ▼                                               │
+│              ┌──────────────────────────────────────────┐                      │
+│              │       🎯 FINAL OUTPUT                    │                      │
+│              │                                          │                      │
+│              │         👤 USER HEARS THEIR VOICE         │                      │
+│              │                                          │                      │
+│              │    Natural, personalized, real-time      │                      │
+│              │    speech restoration achieved!          │                      │
+│              │                                          │                      │
+│              │    ⏱️ Total latency: <500ms              │                      │
+│              │    🎯 Accuracy: >85% phoneme reconstruction│                     │
+│              │    🔊 Quality: MOS ≥3.5/5.0               │                      │
+│              └──────────────────────────────────────────┘                      │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                        ⏱️ REAL-TIME TIMELINE (<500ms)                            ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║                                                                              ║
+║  0ms    ──► 👤 User speaks (breath + vocal intent)                          ║
+║  10ms   ──► 🎤 Sensors capture physiological signals                          ║
+║  50ms   ──► ⚡ ESP32-S3 processes and buffers data                          ║
+║  100ms  ──► 🔐 Encrypted data transmitted to cloud                           ║
+║  150ms  ──► ☁️ Cloud receives and parses data                               ║
+║  250ms  ──► 🔧 Feature engineering completes (13 descriptors)              ║
+║  350ms  ──► 🧠 AI model predicts phonemes                                    ║
+║  400ms  ──► 📚 Phonemes converted to words                                   ║
+║  420ms  ──► 🤖 Language model selects best sentence                          ║
+║  450ms  ──► 🎤 Text-to-speech generates audio                                ║
+║  480ms  ──► 👤 Personalized voice applied                                   ║
+║  500ms  ──► 📱 Audio transmitted to phone                                   ║
+║  520ms  ──► 🔊 USER HEARS THEIR NATURAL VOICE                                ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                      🔧 CLOUD INFRASTRUCTURE (AWS)                             ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║                                                                              ║
+║  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     ║
+║  │ 🌐 API       │  │ 📊 KINESIS/   │  │ ⚡ LAMBDA    │  │ 🧠 ECS GPU   │     ║
+║  │ GATEWAY      │→ │ KAFKA        │→ │ Feature      │→ │ PyTorch/    │     ║
+║  │ 10K req/day  │  │ Ingestion    │  │ Engineering  │  │ ONNX        │     ║
+║  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘     ║
+║         │                                    │                │              ║
+║         ▼                                    ▼                ▼              ║
+║  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     ║
+║  │ 🗄️ POSTGRESQL │  │ 💾 REDIS     │  │ 📁 S3        │  │ 📈 PROMETHEUS│     ║
+║  │ User data    │  │ Cache        │  │ Audio/Models │  │ Metrics      │     ║
+║  │ 100GB        │  │ Session      │  │ 5TB encrypted │  │ + GRAFANA   │     ║
+║  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘     ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                      🔒 SECURITY & COMPLIANCE LAYERS                         ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║                                                                              ║
+║  🛡️ DEVICE → CLOUD:    DTLS 1.3 / AES-256-GCM encryption                   ║
+║  🛡️ APP → CLOUD:       TLS 1.3 encryption                                  ║
+║  🛡️ DATA AT REST:       AES-256-GCM                                        ║
+║  🛡️ AUTHENTICATION:     OAuth 2.0 + JWT (RS256)                             ║
+║  🛡️ AUTHORIZATION:      RBAC (Patient/Clinician/Admin/Researcher)          ║
+║  🛡️ AUDIT LOGGING:      Immutable WORM storage (7 years)                   ║
+║  🛡️ ANONYMIZATION:      k-anonymity + differential privacy                 ║
+║                                                                              ║
+║  📋 COMPLIANCE:                                                        ║
+║  • 🇮🇳 India:  DPDP Act 2023                                              ║
+║  • 🇺🇸 US:      HIPAA                                                     ║
+║  • 🇪🇺 EU:      GDPR                                                      ║
+║  • 🏥 Medical: ISO 13485 + IEC 62304                                       ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                      🎯 KEY PERFORMANCE METRICS                                ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║                                                                              ║
+║  ⏱️  END-TO-END LATENCY:     <500ms (P0), <300ms (P1)                     ║
+║  🎯  PHONEME ACCURACY:        >85% on real patient data                     ║
+║  🔊  SPEECH NATURALNESS:      MOS ≥3.5/5.0                                 ║
+║  🔋  DEVICE BATTERY LIFE:     ≥6 hours continuous                          ║
+║  ☁️  CLOUD AVAILABILITY:      ≥99.9% SLA                                  ║
+║  👥  CONCURRENT USERS (Y1):   2,300+ devices                                ║
+║  ⚡  INFERENCE THROUGHPUT:   ≥100 req/sec per node                        ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                      🚀 IMPLEMENTATION ROADMAP                                 ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║                                                                              ║
+║  📅 PHASE 1 (2025):     ✅ Foundation & Data Collection                     ║
+║  📅 PHASE 2 (Q1-Q2 2026): 🔨 Prototype & AI Model v1                        ║
+║  📅 PHASE 3 (Q3-Q4 2026): 🏥 Clinical Validation & MVP                     ║
+║  📅 PHASE 4 (2027-2028):  📈 Regulatory Approval & Commercial Launch       ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+═════════════════════════════════════════════════════════════════════════════════
+                    THIS SYSTEM ENABLES VOICELESS INDIVIDUALS
+                    TO SPEAK NATURALLY IN REAL-TIME USING
+                    ADVANCED AI AND PHYSIOLOGICAL SIGNAL
+                    PROCESSING TECHNOLOGY
+═════════════════════════════════════════════════════════════════════════════════
