@@ -1,0 +1,461 @@
+TECHNICAL REQUIREMENTS DOCUMENT
+ Sathvani AVC — Artificial Vocal Cord
+ 
+Version 1.0 | August 2026 | Confidential
+1. DOCUMENT CONTROL
+ Field
+ Details
+ 
+Document Title
+Technical Requirements Document — Sathvani AVC
+Version
+1.0
+Date
+26 August 2026
+Author
+Sathvani Engineering & AI Team
+Classification
+Confidential — Internal Use Only
+Stakeholders
+Founder/CEO, ML Lead, Embedded Engineer, Cloud Architect, Regulatory Consultant
+2. SYSTEM ARCHITECTURE OVERVIEW
+The AVC system is a distributed edge-cloud architecture comprising four logical layers: (1) Wearable Edge (sensor
+acquisition + preprocessing), (2) Cloud Signal & Feature Layer (ingestion + feature engineering), (3) Cloud
+Inference Layer (deep learning phoneme reconstruction), and (4) Cloud Language & Synthesis Layer (sentence
+generation + TTS). All layers communicate over encrypted channels (TLS 1.3 / WPA3).
+Layer 1 — Wearable Edge:
+PVDF Piezo (32-bit ADC) → MEMS Mic (I2S) → Pressure Sensor (I2C) → Airflow Sensor (I2C) → ESP32-S3 (sync
++ buffer) → WiFi/UDP streaming
+Layer 2 — Cloud Signal & Feature:
+Ingestion Service → Feature Engineering (13 descriptors: RMS, SPL, Pressure, Velocity, Duration, Energy Ratio,
+Duration Norm, SPL/Vel Ratio, Pressure/RMS Ratio, ΔRMS, ΔSPL, ΔPressure, Phoneme-Class)
+Layer 3 — Cloud Inference:
+Input Projection (D_emb=32) → CNN (64→128→256, 1D conv, BatchNorm+GELU+Dropout) → BiLSTM (3×256
+hidden, bidirectional) → 4-Head Self-Attention (residual+LayerNorm) → Classification Head (softmax, label
+smoothing)
+Layer 4 — Language & Synthesis:
+CMU Dict Alignment → Edit-Distance Recovery → GPT-2 LM Re-ranking → FastSpeech2 + HiFi-GAN TTS →
+Personalized Voice Stream
+3. HARDWARE TECHNICAL SPECIFICATIONS
+3.1 Sensor Stack
+
+Sensor
+Interface
+Spec
+Role
+Status
+PVDF Piezoelectric Film
+Analog → 32-bit ADC
+Sensitivity ~50 pC/N; freq response 0.1Hz–20kHz
+Primary signal (~60-70% SHAP importance)
+Confirmed
+MEMS Microphone (SPH0645 or equiv)
+I2S
+16-bit, 16kHz, SNR 64dB
+Acoustic capture; articulatory noise
+Confirmed on ESP32-S3
+Differential Pressure Sensor (MPXV7002 or equiv)
+I2C/SPI
+Range ±2kPa, 2.5% FS accuracy
+Breath pressure during phonation
+Pending test
+Thermal Mass Airflow Sensor (FS1015 or equiv)
+I2C
+Range 0–30 m/s, ±3% accuracy
+Air velocity at mask outlet
+Integrated in prototype
+3.2 Edge Compute — ESP32-S3
+Parameter
+Specification
+Rationale
+MCU
+ESP32-S3 (Xtensa LX7 dual-core @240MHz)
+WiFi+BLE in single chip; <$5 BOM; mature ecosystem
+RAM
+512KB SRAM + 8MB PSRAM (external)
+Multi-sensor buffer + WiFi stack
+ADC
+2× 12-bit SAR ADC (supplemented by external 32-bit)
+Piezo requires high dynamic range
+Connectivity
+WiFi 4 (802.11 b/g/n) + BLE 5.0
+UDP streaming to cloud; BLE for app pairing
+Power
+USB-C 5V/1A; Li-Po 3.7V 2000mAh
+≥6hr continuous operation target
+Firmware
+FreeRTOS + Arduino/ESP-IDF framework
+Rapid iteration; I2S/I2C drivers validated
+Sampling Rates
+Piezo 1kHz | Mic 16kHz | Pressure 100Hz | Airflow 100Hz
+Nyquist-compliant; async acquisition with timestamp sync
+4. DATA FLOW & PIPELINE SPECIFICATIONS
+4.1 Edge-to-Cloud Streaming Protocol
+Protocol: UDP over WiFi (unreliable but low-latency) with application-layer reliability.
+Packet Structure: [Header: 8 bytes (seq_no, timestamp_ms, sensor_mask)] [Payload: variable (interleaved sensor
+frames)] [Footer: 2 bytes CRC16]
+Rate: ~50 KB/sec aggregate (piezo 1kHz×4B + mic 16kHz×2B + pressure 100Hz×4B + airflow 100Hz×4B)
+Buffering: 500ms ring buffer on ESP32-S3; retransmission request via BLE if packet loss >2%
+Encryption: DTLS 1.3 (datagram TLS) or AES-256-GCM pre-shared key rotation every 24hrs
+4.2 Feature Engineering Pipeline (Cloud)
+The 13-descriptor feature vector is computed per phoneme instance from raw sensor streams:
+Descriptor
+Formula / Computation
+Domain
+Rationale
+RMS Amplitude
+sqrt(mean(x²)) over phoneme window
+Energy
+Dominant predictor (SHAP 0.4134)
+SPL (dB)
+20·log10(RMS / P_ref)
+Energy
+Sound pressure level
+Pressure (Pa)
+Raw differential pressure sensor
+Pressure
+Subglottal/breath pressure
+Velocity (m/s)
+Raw thermal airflow sensor
+Flow
+Articulatory airflow velocity
+Duration (ms)
+End time − Start time
+Temporal
+Phoneme length discrimination
+Energy Ratio
+RMS / (µ_RMS + ε)
+Normalized
+Relative energy within dialogue
+Duration Norm
+Duration / (µ_Duration + ε)
+Normalized
+Relative duration within dialogue
+
+Descriptor
+Formula / Computation
+Domain
+Rationale
+SPL/Velocity Ratio
+SPL / (Velocity + ε)
+Ratio
+Pressure-flow coupling
+Pressure/RMS Ratio
+Pressure / (RMS + ε)
+Ratio
+Pressure-energy coupling
+ΔRMS
+RMS_t − RMS_t-1
+Differential
+Local energy transition
+ΔSPL
+SPL_t − SPL_t-1
+Differential
+Local SPL transition
+ΔPressure
+Pressure_t − Pressure_t-1
+Differential
+Local pressure transition
+Phoneme-Class
+Categorical encoding (vowel, stop, fricative, etc.)
+Contextual
+Articulation group prior
+Preprocessing: Stress markers stripped from phoneme labels; incomplete rows removed; temporal sorting by
+dialogue sequence preserved. Feature vector normalized per-dimension using z-score or min-max scaling before
+model input.
+
+5. DEEP LEARNING ARCHITECTURE SPECIFICATIONS
+5.1 Model Topology
+Layer
+Configuration
+Output Shape
+Parameters
+Notes
+Input
+13 engineered descriptors
+(B, T, 13)
+—
+B=batch, T=seq_len
+Input Projection
+Linear(13 → 32) + GELU + LayerNorm
+(B, T, 32)
+~448
+Learnable embedding
+Conv Block 1
+Conv1d(32→64, k=3) + BN + GELU + Dropout(0.2)
+(B, 64, T)
+~6K
+Local feature extraction
+Conv Block 2
+Conv1d(64→128, k=3) + BN + GELU + Dropout(0.2)
+(B, 128, T)
+~25K
+Hierarchical abstraction
+Conv Block 3
+Conv1d(128→256, k=3) + BN + GELU + Dropout(0.2)
+(B, 256, T)
+~98K
+High-level acoustic patterns
+BiLSTM Layer 1
+BiLSTM(256 hidden, bidir)
+(B, T, 512)
+~1.05M
+Forward+backward temporal
+BiLSTM Layer 2
+BiLSTM(512→256 hidden, bidir)
+(B, T, 512)
+~1.57M
+Deep temporal modeling
+BiLSTM Layer 3
+BiLSTM(512→256 hidden, bidir)
+(B, T, 512)
+~1.57M
+Contextual sequence
+Self-Attention
+4 heads, d_k=128, residual + LayerNorm
+(B, T, 512)
+~1.05M
+Contextual refinement
+Classification Head
+LayerNorm + FC(512→256) + GELU + Dropout + FC(256→C)
+(B, T, C)
+~132K
+C = phoneme classes
+Output
+Softmax over C classes
+(B, T, C)
+—
+Probability distribution
+Total Trainable Parameters: ~5.5M (lightweight; suitable for cloud inference and future edge quantization)
+5.2 Training Configuration
+Hyperparameter
+Value
+Justification
+Optimizer
+AdamW
+Decoupled weight decay; better generalization than Adam
+Learning Rate
+2×10■³
+Aggressive initial LR for small dataset
+Weight Decay
+1×10■■
+L2 regularization without gradient coupling
+Batch Size
+32
+Stable gradients; fits in single GPU
+LR Schedule
+Cosine Annealing Warm Restarts
+Periodic exploration; avoids premature convergence
+Loss Function
+Weighted Cross-Entropy + Label Smoothing (ε=0.1)
+Handles class imbalance; reduces overconfidence
+Class Weights
+Inverse frequency
+Compensates for rare phonemes
+Augmentation
+Gaussian noise (σ=0.04×mean_abs) ×40 per sample
+Effective dataset expansion from 48→1,920 samples
+Regularization
+Dropout (0.2), BatchNorm, LayerNorm, Early Stopping
+Multi-modal overfitting prevention
+Hardware
+NVIDIA A10G / T4 or equivalent
+Cloud GPU inference target
+Framework
+PyTorch 2.x
+Dynamic graphs; strong research ecosystem
+5.3 Explainability & Monitoring (Offline Path)
+SHAP + XGBoost Auxiliary Model: Trained on identical 13-descriptor feature space. SHAP values computed
+per-feature using TreeSHAP. Primary use: offline feature importance monitoring, drift detection, and clinical
+
+explainability (why did the model predict /p/ vs /b/?).
+Top SHAP-ranked features (research baseline):
+1. RMS Amplitude (0.4134) — dominant energy predictor
+2. Phoneme-Class (0.2671) — articulation group prior
+3. ΔRMS (0.1842) — temporal energy transition
+4. Duration (0.1336) — phoneme length
+5. SPL (0.1058) — sound pressure level
+6. ΔSPL (0.0677) — temporal SPL transition
+Note: Pressure, velocity, and ratio-based features showed near-zero SHAP contribution on the small research
+dataset. This is a critical monitoring metric — if these features remain uninformative on real patient data, the
+sensor stack should be re-evaluated.
+
+6. LANGUAGE & SYNTHESIS LAYER
+6.1 Phoneme-to-Word Reconstruction
+CMU Dictionary Alignment: Predicted phoneme sequences P = {p■, p■, ..., p■} are matched against the CMU
+Pronouncing Dictionary using dynamic programming for optimal segmentation.
+Edit-Distance Recovery: Levenshtein distance allows approximate matching when predicted phonemes deviate
+from dictionary entries (e.g., substitution of IH0→IH1 under noise).
+Candidate Generation: For each phoneme subsequence, retrieve top-k dictionary matches (k=5 default).
+Compose candidate word sequences via beam search (beam width=3).
+6.2 Language Model Re-Ranking
+Model: GPT-2 (or lightweight open-source replacement e.g., LLaMA-3-1B, DistilGPT-2).
+Scoring: Score(sentence) = −Loss_LM(sentence). Lower perplexity = higher linguistic plausibility.
+Selection: Top-1 candidate from beam search re-ranked by LM score.
+TR Decision — GPT-2 Replacement: GPT-2 is non-commercial-friendly and computationally heavy.
+Recommendation: Migrate to DistilGPT-2 or a fine-tuned Indic-LM (e.g., AI4Bharat IndicBERT) for Hindi/Telugu
+support. This reduces inference cost by ~60% and eliminates OpenAI licensing ambiguity.
+6.3 Text-to-Speech Synthesis
+Component
+Technology
+Spec
+Rationale
+Acoustic Model
+FastSpeech2
+Non-autoregressive; parallel mel-gen
+Low latency; controllable prosody
+Vocoder
+HiFi-GAN
+GAN-based waveform synthesis
+Near-human naturalness; real-time capable
+Speaker Embedding
+d-vector / x-vector extraction
+256-dim speaker vector
+Personalization from 5-min pre-loss audio
+Inference
+ONNX Runtime / TensorRT
+GPU batch inference
+<200ms TTS latency per utterance
+Output
+16-bit PCM WAV, 22.05kHz
+Standard audio format
+Universal playback compatibility
+7. CLOUD INFRASTRUCTURE & DEPLOYMENT
+7.1 Cloud Platform Architecture
+Component
+Technology
+Purpose
+Sizing (Year 1)
+API Gateway
+AWS API Gateway / Cloudflare
+Rate limiting, auth, routing
+10K req/day
+Ingestion Service
+AWS Kinesis / Apache Kafka
+Real-time sensor stream ingestion
+50 KB/s per device × 2,300 devices
+Feature Engineering
+AWS Lambda / Python (Pandas, NumPy)
+13-descriptor vector computation
+<100ms per utterance
+Inference Service
+AWS ECS (GPU) / PyTorch + ONNX Runtime
+CNN-BiLSTM-Attention inference
+A10G instance; 100 req/sec
+TTS Service
+AWS ECS (GPU) / FastSpeech2 + HiFi-GAN
+Speech synthesis
+Shared GPU pool with inference
+LM Re-Ranking
+AWS ECS (CPU) / HuggingFace Transformers
+GPT-2/DistilGPT-2 scoring
+c6i.2xlarge; batch scoring
+Database
+PostgreSQL + Redis
+User profiles, voice models, usage logs
+100GB storage; 1K IOPS
+
+Component
+Technology
+Purpose
+Sizing (Year 1)
+Object Storage
+AWS S3
+Audio recordings, model artifacts, datasets
+5TB encrypted
+Monitoring
+Prometheus + Grafana + CloudWatch
+Latency, accuracy, drift, health
+Real-time dashboards
+CI/CD
+GitHub Actions + Terraform
+Automated testing, infra-as-code
+Full pipeline automation
+7.2 API Specifications
+POST /v1/ingest — Stream raw sensor frames from device
+Headers: Authorization: Bearer <token>, Content-Type: application/x-avc-stream
+Body: Binary protobuf (seq_no, timestamp, sensor_mask, [frames])
+Response: 202 Accepted {session_id, estimated_latency_ms}
+POST /v1/synthesize — Trigger phoneme reconstruction + TTS
+Body: JSON {session_id, user_id, voice_profile_id, language_code}
+Response: 200 OK {audio_url, phoneme_sequence, confidence_score, latency_ms}
+GET /v1/health — Service health check
+Response: 200 OK {status, version, gpu_utilization, queue_depth}
+POST /v1/calibrate — Per-user sensor calibration
+Body: JSON {user_id, baseline_readings: {pressure, airflow, piezo_rms}}
+Response: 200 OK {calibration_vector, confidence}
+
+8. SECURITY & COMPLIANCE
+Domain
+Requirement
+Implementation
+Data Encryption (Transit)
+TLS 1.3 / DTLS 1.3 for UDP
+Mandatory for all device-cloud and app-cloud communication
+Data Encryption (Rest)
+AES-256-GCM
+All patient audio, sensor data, and voice models
+Authentication
+OAuth 2.0 + JWT (RS256)
+Short-lived tokens (15min); refresh tokens (7 days)
+Authorization
+RBAC (Role-Based Access Control)
+Patient, Clinician, Admin, Researcher roles
+Audit Logging
+Immutable audit trail
+All data access logged to WORM storage (7 years)
+Anonymization
+k-anonymity + differential privacy
+Research data export only after de-identification
+India Compliance
+DPDP Act 2023
+Consent management; data localization; breach notification
+US Compliance
+HIPAA
+BAA with cloud provider; minimum necessary access
+EU Compliance
+GDPR
+Right to erasure; data portability; DPO appointment
+Medical Device
+ISO 13485 + IEC 62304
+QMS for software lifecycle; risk management per ISO 14971
+9. EDGE QUANTIZATION & FUTURE ROADMAP
+Current State: Full inference runs in cloud. ESP32-S3 handles only acquisition and streaming.
+Phase 2 Edge Plan (2027):
+ Quantize CNN-BiLSTM to INT8 using ONNX Runtime + TensorFlow Lite Micro
+ Target: partial phoneme classification on edge (top-3 candidates); full refinement in cloud
+ Reduces cloud dependency for common phrases; enables offline mode
+ Memory budget: ≤2MB model size for ESP32-S3 PSRAM
+Phase 3 Edge Plan (2028):
+ Evaluate ESP32-P4 or ARM Cortex-M55 + Ethos-U55 NPU for full edge inference
+ Target: <100ms edge-only latency for 50 common phrases
+ Cloud reserved for personalization, model updates, and analytics
+10. TESTING & VALIDATION STRATEGY
+Unit Testing: pytest for feature engineering, model forward pass, API endpoints
+Integration Testing: End-to-end pipeline with synthetic sensor data (phantom speech simulator)
+Model Validation: Stratified k-fold cross-validation (k=5); held-out patient cohorts; confusion matrix per
+phoneme class
+Latency Testing: p50, p95, p99 latency benchmarks under load (Locust/k6)
+Security Testing: OWASP ZAP penetration testing; fuzzing of ingestion API
+Clinical Validation: 10-patient pilot at AIIMS; IRB-approved protocol; primary endpoint: intelligibility score
+(CIID)
+11. OPEN TECHNICAL DECISIONS
+
+ LM Choice: Stick with GPT-2 vs. migrate to DistilGPT-2 / Indic-LM? Decision needed by Phase 2 (Q1 2026).
+ Cloud Provider: AWS vs. GCP vs. Azure? GCP offers better TPU pricing for inference; AWS has stronger
+India presence.
+ Edge Quantization: Is INT8 BiLSTM feasible on ESP32-S3, or should we skip to ESP32-P4?
+ Database: PostgreSQL sufficient, or move to time-series DB (TimescaleDB) for sensor data?
+ Monitoring: Build custom SHAP drift detection, or use Evidently AI / WhyLabs?
+12. REFERENCES
+[1] Sathvani Research Paper — 'Deep Acoustic-Phonetic Reconstruction Framework Using CNN-BiLSTM
+Attention Networks with Explainable AI' (2025)
+[2] Sathvani Pitch Deck — AVC Artificial Vocal Cord (2025)
+[3] Hochreiter & Schmidhuber — 'Long Short-Term Memory', Neural Computation (1997)
+[4] Vaswani et al. — 'Attention Is All You Need', NeurIPS (2017)
+[5] Lundberg & Lee — 'A Unified Approach to Interpreting Model Predictions', NeurIPS (2017)
+[6] Ren et al. — 'FastSpeech 2: Fast and High-Quality End-to-End Text-to-Speech', ICLR (2021)
+[7] Kong et al. — 'HiFi-GAN: Generative Adversarial Networks for Efficient and High Fidelity Speech Synthesis',
+NeurIPS (2020)
+ — End of TRD —
+ 

@@ -1,0 +1,340 @@
+IMPLEMENTATION PLAN
+ Sathvani AVC — Artificial Vocal Cord
+ 
+Version 1.0 | August 2026 | Confidential
+1. DOCUMENT CONTROL
+ Field
+ Details
+ 
+Document Title
+Implementation Plan — Sathvani AVC
+Version
+1.0
+Date
+26 August 2026
+Author
+Sathvani Engineering & Operations Team
+Classification
+Confidential — Internal Use Only
+Stakeholders
+Founder/CEO, Engineering Lead, Clinical Advisor, Regulatory Consultant, Investors
+2. EXECUTIVE SUMMARY
+This implementation plan outlines the phased execution strategy to bring the Sathvani AVC (Artificial Vocal Cord)
+from current prototype status to commercial launch. The plan spans four major phases over 36 months: (1)
+Foundation & Data Collection, (2) Prototype & AI Training, (3) Clinical Validation & MVP Refinement, and (4)
+Regulatory Approval & Commercial Launch. Total seed funding requirement: ■30–50 lakhs for Phase 1–2; Series
+A target by end of 2027 for Phase 3–4 scale-up.
+3. PHASE BREAKDOWN
+PHASE 1: FOUNDATION & DATA COLLECTION (Q3–Q4 2025)
+Duration: 6 months | Budget: ■8–12L | Status: Partially Completed
+Objectives:
+ Finalize WiFi+UDP streaming pipeline from ESP32-S3 to cloud
+ Establish WAV data collection protocol with timestamp synchronization
+ Begin AI training on available research dataset (48 phoneme instances, 6 dialogues)
+ Complete hardware architecture design review and BOM freeze
+ File provisional patent → initiate complete specification drafting
+Deliverables:
+ Working ESP32-S3 firmware with 4-sensor acquisition
+ Cloud ingestion endpoint (v0.1) accepting UDP streams
+ Baseline CNN-BiLSTM model trained on research data (100% accuracy on clean data)
+
+ Provisional patent filed (already completed per pitch deck)
+Key Risks:
+ Research dataset is tiny (48 instances) — model may not generalize. Mitigation: begin recruiting
+laryngectomy patients for early data collection.
+ Pressure sensor driver untested. Mitigation: bench test with calibrated pressure source.
+PHASE 2: PROTOTYPE ASSEMBLY & AI MODEL V1 (Q1–Q2 2026)
+Duration: 6 months | Budget: ■15–20L | Status: Upcoming
+Objectives:
+ Assemble first integrated wearable prototype (mask form factor)
+ Train AI model v1 on expanded dataset (target: 500+ phoneme instances from 20+ speakers)
+ Complete patent specification filing
+ Design AIIMS Bibinagar pilot protocol and submit for IRB approval
+ Build companion mobile app (MVP: Android, BLE pairing, audio playback)
+Deliverables:
+ 3–5 working prototype units for internal testing
+ AI model v1 with >80% phoneme accuracy on held-out speaker data
+ Complete patent specification filed (June 2026 target)
+ IRB protocol approved at AIIMS
+ Android companion app v0.1 (pairing + playback)
+Milestones:
+Milestone
+Target Date
+Owner
+Success Criteria
+M2.1
+15 Jan 2026
+Hardware Lead
+Prototype PCB assembled and powered on
+M2.2
+28 Feb 2026
+ML Lead
+Model v1 trained; validation accuracy >80%
+M2.3
+31 Mar 2026
+Regulatory
+Complete patent spec filed with IPO
+M2.4
+30 Apr 2026
+Clinical Advisor
+IRB protocol approved at AIIMS
+M2.5
+31 May 2026
+Software Lead
+Android app v0.1 on Play Store (internal testing)
+M2.6
+30 Jun 2026
+Founder/CEO
+Seed round closed (■30–50L) or bridge financing secured
+
+PHASE 3: CLINICAL VALIDATION & MVP REFINEMENT (Q3–Q4 2026)
+Duration: 6 months | Budget: ■25–35L | Status: Upcoming
+Objectives:
+ Execute 10-patient clinical pilot at AIIMS Bibinagar
+ Collect real patient data (laryngectomy + vocal cord paralysis) for model retraining
+ Refine prototype into MVP based on clinical feedback (comfort, signal quality, usability)
+ Achieve >85% phoneme accuracy on real patient data
+ Initiate CDSCO manufacturing license application
+ Build clinician dashboard and analytics platform
+Deliverables:
+ Clinical pilot report with IRB sign-off
+ AI model v2 retrained on real patient data (>85% accuracy)
+ MVP device (10 units) ready for expanded pilot
+ CDSCO application submitted
+ Clinician dashboard v1.0
+Milestones:
+Milestone
+Target Date
+Owner
+Success Criteria
+M3.1
+15 Aug 2026
+Clinical Advisor
+First patient enrolled in pilot
+M3.2
+30 Sep 2026
+ML Lead
+Real patient dataset >200 phoneme instances
+M3.3
+31 Oct 2026
+Hardware Lead
+MVP design freeze based on patient feedback
+M3.4
+30 Nov 2026
+ML Lead
+Model v2 accuracy >85% on held-out patient data
+M3.5
+15 Dec 2026
+Regulatory
+CDSCO application dossier submitted
+M3.6
+31 Dec 2026
+Founder/CEO
+Pilot report published; Series A pitch deck ready
+PHASE 4: REGULATORY APPROVAL & COMMERCIAL LAUNCH (2027–2028)
+Duration: 18 months | Budget: ■1.5–2.5Cr (Series A) | Status: Upcoming
+Objectives:
+ Secure FDA 510(k) or De Novo clearance and CDSCO manufacturing license
+ Launch hospital B2B sales via AIC-CCMB network and ENT surgeon partnerships
+ Launch B2C D2C portal for direct patient access
+ Scale manufacturing to 2,300+ units (Year 1 target)
+ Build SaaS subscription layer (voice model updates, cloud processing)
+ Expand to multi-language (Hindi, Telugu, Tamil, Kannada)
+Deliverables:
+ FDA clearance + CDSCO manufacturing license
+ Commercial device (final BOM cost <■25K; retail ■65K)
+ B2B portal + B2C e-commerce platform live
+ SaaS tier launched (■500–1,500/month)
+
+ ISO 13485 QMS certification
+Milestones:
+Milestone
+Target Date
+Owner
+Success Criteria
+M4.1
+30 Jun 2027
+Regulatory
+CDSCO manufacturing license obtained
+M4.2
+30 Sep 2027
+Regulatory
+FDA pre-submission meeting completed
+M4.3
+31 Dec 2027
+Founder/CEO
+Series A closed (■3–5Cr)
+M4.4
+31 Mar 2028
+Operations
+First 500 units manufactured and shipped
+M4.5
+30 Jun 2028
+Sales
+2,300+ units distributed; ■1.5Cr revenue run-rate
+M4.6
+31 Dec 2028
+Product
+Multi-language support (4+ Indian languages)
+
+4. RESOURCE PLAN
+4.1 Team Structure
+Role
+Headcount
+Responsibility
+Timing
+Founder / CEO
+1
+Strategy, fundraising, clinical partnerships, investor relations
+Full-time from Day 0
+ML / AI Lead
+1
+Model architecture, training, evaluation, feature engineering
+Full-time from Day 0
+Embedded Engineer
+1
+ESP32-S3 firmware, sensor integration, PCB design
+Full-time from Day 0
+Cloud / Backend Engineer
+1
+API design, infrastructure, DevOps, security
+Hire by M2.1 (Jan 2026)
+Mobile App Developer
+1
+Android companion app, BLE integration, UI/UX
+Hire by M2.1 (Jan 2026)
+Clinical Advisor (Consultant)
+1
+Trial design, IRB, regulatory guidance, patient recruitment
+Part-time from Day 0
+Regulatory Consultant
+1
+CDSCO/FDA submissions, ISO 13485, QMS setup
+Hire by M2.3 (Mar 2026)
+Industrial Designer
+0.5
+Mask ergonomics, comfort, aesthetic design
+Contract by M2.3 (Mar 2026)
+Manufacturing Partner
+—
+PCBA, assembly, packaging, supply chain
+Engage by M3.3 (Oct 2026)
+4.2 Budget Allocation (Seed ■30–50L)
+Category
+Amount (■L)
+% of Seed
+Purpose
+Hardware & Sensors
+8–12
+25%
+PVDF film, MEMS mics, pressure/airflow sensors, ESP32-S3 modules, PCBA prototyping
+Cloud & AI Infrastructure
+5–8
+18%
+GPU compute (AWS/GCP), storage, model training, API hosting
+Clinical Pilot
+5–7
+15%
+AIIMS collaboration, patient compensation, IRB fees, clinical monitoring
+Patent & Legal
+3–5
+10%
+Complete patent spec, trademark, regulatory consulting
+Software Development
+4–6
+14%
+Mobile app, cloud platform, clinician dashboard
+Team Salaries (6 months)
+8–10
+22%
+Core team compensation (founder + 2 engineers)
+Miscellaneous / Buffer
+2–3
+6%
+Travel, office, contingency
+5. RISK REGISTER & CONTINGENCY
+Risk
+Impact
+Likelihood
+Contingency Plan
+Trigger
+AI model fails to generalize to real patient data
+Critical
+High
+Pivot to hybrid approach: piezo + electrolarynx acoustic fusion; expand sensor stack to include EMG or sEMG
+Model v2 accuracy <70% on pilot data
+Clinical pilot delayed (patient recruitment)
+High
+Medium
+Expand to multiple sites (NIMHANS, CMC Vellore); offer patient stipends; partner with laryngectomy support groups
+<3 patients enrolled by M3.1 + 30 days
+CDSCO rejects initial application
+High
+Low
+Engage third-party regulatory consultant for remediation; consider Class A self-certification route first
+Rejection letter received
+Key team member departure
+Medium
+Medium
+Maintain detailed documentation (this TRD); cross-train team members; offer equity vesting
+30-day notice given
+Seed funding insufficient
+High
+Medium
+Apply to BIRAC, DST, NIDHI-PRAYAS grants; approach angel investors in med-tech; reduce scope to 2-sensor MVP
+<50% of seed target by Dec 2025
+Supply chain disruption (sensors)
+Medium
+Low
+Dual-source all critical components; maintain 3-month inventory buffer; identify local alternatives
+Lead time >8 weeks
+
+6. GOVERNANCE & REPORTING
+Weekly: Engineering standup (30 min) — blockers, sprint progress, bug triage
+Bi-weekly: Product review — demo new features, review metrics, adjust priorities
+Monthly: Board/Advisor update — financials, milestones, risks, fundraising status
+Quarterly: Strategic review — OKRs, market feedback, competitive landscape, pivot decisions
+Ad-hoc: Clinical safety review — any adverse events in pilot trigger immediate review within 24 hours
+7. SUCCESS CRITERIA BY PHASE
+Phase
+Technical Success
+Business Success
+Clinical Success
+Phase 1 (2025)
+4-sensor acquisition working; UDP pipeline stable; baseline model trained
+Provisional patent filed; seed pitch deck validated
+—
+Phase 2 (Q1-Q2 2026)
+Model v1 >80% accuracy; Android app v0.1; 3–5 prototypes
+Seed round closed (■30–50L); complete patent filed
+IRB protocol approved
+Phase 3 (Q3-Q4 2026)
+Model v2 >85% on patient data; MVP design freeze; clinician dashboard
+Series A pitch ready; CDSCO app submitted
+10-patient pilot completed; safety profile clean
+Phase 4 (2027–2028)
+Commercial firmware v1.0; multi-language TTS; edge quantization R&D
+2,300+ units sold; ■1.5Cr revenue; SaaS launched
+FDA/CDSCO approved; real-world evidence published
+8. DEPENDENCIES & CRITICAL PATH
+Critical Path (longest duration to commercial launch):
+1. Sensor signal validation on patients (Phase 1–2) → Gates all AI model reliability
+2. AI model v2 training on real data (Phase 3) → Gates clinical efficacy claim
+3. 10-patient pilot completion (Phase 3) → Gates regulatory submission and investor confidence
+4. CDSCO manufacturing license (Phase 4) → Gates commercial sales in India
+5. FDA clearance (Phase 4) → Gates US market entry and global credibility
+Parallel Tracks (non-critical but important):
+ Mobile app development can proceed in parallel with hardware
+ Patent prosecution runs in parallel with clinical work
+ SaaS platform development can begin after MVP design freeze
+9. APPENDICES
+Appendix A: Gantt Chart Summary — See project management tool (Notion/Jira) for detailed task-level
+tracking.
+Appendix B: Vendor Contact List — Sensor suppliers, PCB manufacturers, contract manufacturers (CM),
+cloud providers.
+Appendix C: Clinical Protocol Draft — AIIMS Bibinagar 10-patient pilot: inclusion/exclusion criteria, endpoints,
+safety monitoring plan.
+Appendix D: Competitive Benchmarking — Silent speech interface research (MIT AlterEgo, EMG-based
+systems) as technical reference class.
+ — End of Implementation Plan —
+ 

@@ -1,0 +1,349 @@
+PRODUCT REQUIREMENTS DOCUMENT
+ Sathvani AVC — Artificial Vocal Cord
+ 
+Version 1.0 | August 2026 | Confidential
+1. DOCUMENT CONTROL
+ Field
+ Details
+ 
+Document Title
+Product Requirements Document — Sathvani AVC
+Version
+1.0
+Date
+26 August 2026
+Author
+Sathvani Product & Engineering Team
+Classification
+Confidential — Internal Use Only
+Stakeholders
+Founder/CEO, Engineering Lead, Clinical Advisor, Regulatory Consultant
+2. EXECUTIVE SUMMARY
+Sathvani AVC is a mask-style wearable device that restores natural, personalized speech for individuals who have
+lost their voice due to laryngectomy, vocal cord paralysis, ALS, or related conditions. The device captures
+physiological signals — vibration (PVDF piezo), acoustic (MEMS microphone), breath pressure, and airflow velocity
+— and reconstructs phonemes via a cloud-hosted AI pipeline (CNN-BiLSTM-Attention architecture), then
+synthesizes speech through a personalized TTS engine.
+Target Market: 70M+ global voiceless population; initial focus on India's ~10K annual laryngectomy cases plus
+NGO/rehabilitation partnerships. TAM $4.3B (global AAC & SGD), SAM $460M (APAC), SOM $1.5M (Year 1–3
+India).
+3. PROBLEM STATEMENT
+Over 70 million people worldwide cannot speak. Current solutions force unacceptable tradeoffs:
+ Solution
+ Critical Failure
+ 
+Electrolarynx
+Robotic monotone; held against throat; socially stigmatizing; no personalization
+AAC Tablets/Apps
+Requires fine motor skills; too slow for real conversation; stigmatizing in public
+Speech Therapy
+Limited outcomes for total vocal cord loss; months of effort for marginal gains
+TEP (Tracheoesophageal Puncture)
+Invasive surgery; infection risk; only viable post-laryngectomy; not personalized
+Core Gap: No existing non-invasive device converts physiological speech-production intent (breath, vibration,
+pressure, airflow) directly into natural, personalized, real-time speech without surgery or a robotic voice box.
+
+4. PRODUCT VISION & OBJECTIVES
+Vision: Restore the dignity of human voice for every person who has lost it.
+Product Objectives (12-month horizon):
+ Build and validate a functional wearable prototype with 4-sensor acquisition
+ Achieve >85% phoneme reconstruction accuracy on real patient data (laryngectomy / paralysis)
+ Deliver sub-500ms end-to-end latency (sensor input → synthesized speech output)
+ Complete 10-patient clinical pilot at AIIMS Bibinagar
+ File complete patent specification and initiate CDSCO Class A/B regulatory pathway
+ Secure FDA pre-submission meeting and CDSCO manufacturing license
+5. TARGET USERS & PERSONAS
+Primary User — The Voiceless Patient
+Post-laryngectomy patients (age 45–75), vocal cord paralysis patients, and progressive neurological condition
+sufferers (ALS, Parkinson's). Needs: effortless, hands-free, natural-sounding speech in social and clinical settings.
+Cannot type or hold devices for extended periods.
+Secondary User — Caregiver & Clinician
+ENT surgeons, speech pathologists, and rehabilitation centre staff. Needs: objective usage data, calibration tools,
+training mode, and integration with existing therapy workflows.
+Tertiary User — Payer & Regulator
+Government ADIP scheme administrators, insurance providers, hospital procurement. Needs: demonstrated
+clinical efficacy, regulatory compliance (CDSCO/FDA), and cost-effectiveness vs. existing alternatives.
+
+6. FUNCTIONAL REQUIREMENTS
+6.1 Hardware — Wearable Device
+ID
+Requirement
+Priority
+Acceptance Criteria
+FR-HW-001
+PVDF piezoelectric sensor for vibration capture (primary signal, ~60-70% predictive importance per SHAP)
+P0
+Signal SNR >20dB; confirmed on prototype
+FR-HW-002
+MEMS microphone (I2S) for acoustic capture
+P0
+Driver confirmed on ESP32-S3; 16-bit 16kHz sampling
+FR-HW-003
+Pressure sensor (I2C) for breath pressure
+P0
+Range 0-10 kPa; pending bench test on patient-mimic
+FR-HW-004
+Airflow velocity sensor (I2C) for articulatory airflow
+P0
+Integrated in prototype; range 0-30 m/s
+FR-HW-005
+32-bit ADC for piezo signal acquisition
+P0
+≥24-bit effective resolution; sampling ≥1kHz
+FR-HW-006
+ESP32-S3 preprocessing unit (sync + buffer + WiFi relay)
+P0
+Real-time multi-sensor sync; UDP streaming to cloud
+FR-HW-007
+Rechargeable battery (≥6hr continuous use)
+P1
+Validated via discharge cycle testing
+FR-HW-008
+Mask-style ergonomic form factor (<150g)
+P1
+User comfort score ≥4/5 in pilot
+FR-HW-009
+LED status indicator + haptic feedback
+P2
+Visual/audio feedback for connection/ battery/ error states
+FR-HW-010
+BLE pairing for companion mobile app
+P2
+Stable BLE 5.0 connection; <2s pairing time
+6.2 AI/Cloud Pipeline — Signal Processing & Phoneme Reconstruction
+ID
+Requirement
+Priority
+Acceptance Criteria
+FR-AI-001
+Extract 13 engineered acoustic descriptors per phoneme instance
+P0
+RMS, SPL, Pressure, Velocity, Duration, Energy Ratio, Duration Norm, SPL/Velocity Ratio, Pressure/RMS Ratio, ΔRMS, ΔSPL, ΔPressure, Phoneme-Class
+FR-AI-002
+Gaussian noise augmentation (40x per sample, σ=0.04×mean abs magnitude)
+P0
+Implements augmentation pipeline; prevents overfitting on small datasets
+FR-AI-003
+CNN feature extractor: 1D conv stack 64→128→256 channels
+P0
+BatchNorm + GELU + Dropout per block
+FR-AI-004
+BiLSTM temporal modeling: 3 layers, 256 hidden units, bidirectional
+P0
+Captures forward/backward phonetic dependencies
+FR-AI-005
+Multi-head self-attention: 4 heads with residual connections + LayerNorm
+P0
+Contextual refinement of latent representations
+FR-AI-006
+Classification head: softmax over phoneme classes with label smoothing
+P0
+Weighted cross-entropy; inverse-frequency class weights
+FR-AI-007
+AdamW optimizer + cosine annealing warm restarts
+P0
+LR=2e-3, weight decay=1e-4, batch=32
+FR-AI-008
+CMU phonetic dictionary mapping for word candidate generation
+P0
+Dynamic segmentation + edit-distance recovery
+FR-AI-009
+Language model re-ranking (GPT-2 or equivalent) for sentence plausibility
+P0
+Score = -Loss_LM(sentence); top-1 selection
+FR-AI-010
+TTS synthesis: FastSpeech2 + HiFi-GAN for natural voice output
+P0
+MOS ≥3.5; latency <200ms per utterance
+FR-AI-011
+Personalized voice cloning from pre-loss recordings
+P1
+Speaker embedding adaptation; 5-min sample sufficient
+FR-AI-012
+KNN centroid-based unseen phoneme generalization
+P1
+Fallback inference for out-of-vocabulary phonetic patterns
+6.3 Software — Companion App & Cloud Platform
+ID
+Requirement
+Priority
+Acceptance Criteria
+FR-SW-001
+Real-time audio playback of synthesized speech on mobile device
+P0
+Latency <500ms end-to-end
+
+ID
+Requirement
+Priority
+Acceptance Criteria
+FR-SW-002
+User voice profile creation and management
+P0
+Upload pre-loss audio; generate speaker embedding
+FR-SW-003
+Device pairing, calibration, and firmware OTA updates
+P0
+BLE + WiFi dual-mode; secure OTA
+FR-SW-004
+Usage analytics dashboard for clinicians
+P1
+Daily usage time, phoneme accuracy trends, error logs
+FR-SW-005
+Offline mode: cached TTS for common phrases
+P1
+50 pre-loaded phrases; no cloud needed
+FR-SW-006
+Multi-language support (Hindi, Telugu, English initial)
+P1
+Phoneme inventory covers target language phones
+FR-SW-007
+Subscription management (■500–1,500/month SaaS tier)
+P2
+In-app purchase + hospital billing integration
+FR-SW-008
+Anonymized data export for research partners
+P2
+HIPAA/GDPR-compliant de-identification
+
+7. NON-FUNCTIONAL REQUIREMENTS
+Category
+Requirement
+Target
+Performance
+End-to-end latency (sensor → speech)
+< 500ms (P0); < 300ms (P1 stretch)
+Performance
+Phoneme reconstruction accuracy
+> 85% on real patient data (P0); > 90% (P1)
+Performance
+TTS naturalness (MOS)
+≥ 3.5 / 5.0
+Reliability
+Device uptime
+≥ 99.5% during 6hr session
+Reliability
+Cloud API availability
+≥ 99.9% uptime SLA
+Security
+Data encryption at rest
+AES-256
+Security
+Data encryption in transit
+TLS 1.3
+Security
+Patient data compliance
+HIPAA (US), DPDP Act 2023 (India), GDPR (EU)
+Scalability
+Concurrent users (Year 1)
+Support 2,300+ active devices
+Scalability
+Cloud inference throughput
+≥ 100 req/sec per inference node
+Usability
+First-time setup time
+< 15 minutes
+Usability
+Device weight
+< 150 grams
+Regulatory
+India CDSCO
+Class A/B medical device license
+Regulatory
+US FDA
+510(k) or De Novo pathway
+Regulatory
+ISO 13485
+Quality management system certification
+8. USER STORIES
+As a...
+I want to...
+So that...
+Priority
+Post-laryngectomy patient
+speak naturally without holding a device
+I can have normal conversations in public
+P0
+Post-laryngectomy patient
+hear my own pre-surgery voice
+I retain my identity and emotional connection
+P1
+ALS patient with hand tremors
+speak without typing or pressing buttons
+I can communicate despite motor limitations
+P0
+Speech pathologist
+view patient usage and accuracy data
+I can tailor therapy and track progress
+P1
+Hospital procurement officer
+purchase devices in bulk at ≤■65K/unit
+we can offer it under ADIP scheme
+P1
+ENT surgeon
+see clinical validation data
+I can confidently recommend it to patients
+P0
+9. SUCCESS METRICS & KPIs
+Technical KPIs (6-month)
+ Phoneme accuracy ≥ 85% on 10-patient pilot dataset
+ End-to-end latency < 500ms (p95)
+ Device battery life ≥ 6 hours continuous
+
+ Cloud inference cost < ■3 per 1000 utterances
+Business KPIs (12-month)
+ 2,300+ devices sold/distributed (Year 1 SOM target)
+ 500+ active SaaS subscribers (■500–1,500/month)
+ AIIMS pilot completion with IRB approval
+ CDSCO manufacturing license obtained
+ Complete patent specification filed
+10. RISKS & MITIGATIONS
+Risk
+Impact
+Likelihood
+Mitigation
+Research paper test/dist files were identical — 100% accuracy may not generalize to real patient data
+High
+High
+Immediate: collect real laryngectomy patient data; redesign train/test split with true acoustic distortion; validate on held-out patient cohorts
+Sensor signal quality insufficient in actual aphonic patients
+Critical
+Medium
+Early bench testing with patient-mimic phantoms; partner with AIIMS for Day-1 clinical access; design fallback to electrolarynx hybrid mode
+Regulatory delays (CDSCO/FDA)
+High
+Medium
+Engage regulatory consultant now; file provisional → complete patent; pursue QMS ISO 13485 early
+Competitor enters with larger funding (e.g., silent-speech EMG startups)
+Medium
+Medium
+Secure IP via complete patent; build clinical data moat through AIIMS partnership; focus on India cost advantage
+Cloud latency unacceptable on 4G/weak networks
+Medium
+Medium
+Edge quantization of CNN-BiLSTM (TFLite/ONNX); deploy edge TTS cache; design graceful degradation to offline phrase mode
+TTS personalization requires high-quality pre-loss recordings
+Medium
+Low
+Offer generic high-quality voice models as default; partner with voice banking services
+11. OPEN QUESTIONS
+ What is the minimum viable sensor subset if pressure/airflow prove unreliable in patients? (Fallback: piezo +
+mic only?)
+ Can the CNN-BiLSTM-Attention model be quantized to run partially on ESP32-S3 for edge inference?
+ What is the regulatory classification in EU (MDR Class I/IIa)?
+ Should GPT-2 be replaced with a smaller, open-source LM (e.g., LLaMA-3-1B) for cost and licensing
+reasons?
+ What is the go-to-market priority: B2B hospital bulk (ADIP) vs. B2C D2C portal?
+12. APPENDICES
+Appendix A: Research Paper Summary — 'Deep Acoustic-Phonetic Reconstruction Framework Using
+CNN-BiLSTM Attention Networks with Explainable AI' (Doc 1). Key findings: RMS amplitude dominates SHAP
+importance (0.4134); 13-descriptor feature space enables near-perfect accuracy on clean data; CMU dict + GPT-2
+pipeline validates sentence reconstruction.
+Appendix B: Pitch Deck Summary — Sathvani AVC (Doc 2). Seed ask: ■30–50L; target price ■65K; roadmap:
+2025 hardware → Q1-Q2 2026 prototype → Q3-Q4 2026 clinical validation → 2027–2028 FDA/CDSCO approval.
+Appendix C: Competitive Landscape — Electrolarynx (robotic), Voiceitt (dysarthric speech clarity, not aphonic),
+Tobii Dynavox (eye-gaze AAC), TEP (surgical). AVC occupies unique white space: non-invasive
+physiological-signal-to-speech for zero-voice patients.
+
+— End of PRD —
+ 

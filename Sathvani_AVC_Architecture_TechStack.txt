@@ -1,0 +1,217 @@
+Sathvani AVC — Confidential
+Page 1
+ SATHVANI AVC
+ System Architecture & Tech Stack — Visual Flow
+ Artificial Vocal Cord  |  Version 1.0  |  August 2026  |  Confidential
+ 
+1. System Overview
+Sathvani AVC is a distributed edge-cloud architecture that restores natural, personalized speech for people who have
+lost their voice (laryngectomy, vocal-cord paralysis, ALS). Physiological signals captured by a wearable mask are
+streamed to the cloud, reconstructed into phonemes by a CNN-BiLSTM-Attention model, converted into words via
+dictionary + language-model re-ranking, and synthesized into personalized speech using FastSpeech2 + HiFi-GAN.
+2. End-to-End Architecture Flow
+The system is organized into four logical layers. Data flows strictly top-to-bottom.
+ LAYER 1 — WEARABLE EDGE (On-Device)
+ Sensors: PVDF Piezoelectric Film (32-bit ADC) → MEMS Mic (I2S) → Differential Pressure (I2C) → Thermal Airflow (I2C)
+Edge Compute: ESP32-S3 (Xtensa LX7 dual-core @ 240 MHz, 512 KB SRAM + 8 MB PSRAM)
+Firmware: FreeRTOS + Arduino / ESP-IDF  |  Sampling: Piezo 1 kHz | Mic 16 kHz | Pressure/Airflow 100 Hz
+Output: WiFi 4 + BLE 5.0  →  UDP streaming (~50 KB/s) with DTLS 1.3 / AES-256-GCM
+Power: USB-C 5 V / Li-Po 3.7 V 2000 mAh  →  ≥ 6 h continuous operation  |  Form factor < 150 g mask
+ ▼
+ LAYER 2 — CLOUD SIGNAL & FEATURE ENGINEERING
+ Ingestion: AWS Kinesis / Apache Kafka  →  real-time sensor frame intake (protobuf)
+Feature Pipeline: 13 engineered descriptors computed per phoneme window:
+RMS Amplitude  SPL (dB)  Pressure (Pa)  Velocity (m/s)  Duration (ms)  Energy Ratio  Duration Norm
+SPL/Velocity Ratio  Pressure/RMS Ratio  ΔRMS  ΔSPL  ΔPressure  Phoneme-Class (categorical)
+Tech: AWS Lambda / Python (Pandas, NumPy)  |  z-score or min-max normalization  |  < 100 ms per utterance
+ ▼
+ LAYER 3 — CLOUD INFERENCE (Deep Learning Phoneme Reconstruction)
+ Model Topology (~5.5 M parameters):
+Input Projection (Linear 13→32 + GELU + LayerNorm) → CNN Blocks (64→128→256, k=3, BN+GELU+Dropout 0.2)
+→ 3× BiLSTM (256 hidden, bidirectional) → 4-Head Self-Attention (d_k=128, residual + LayerNorm)
+→ Classification Head (LayerNorm + FC 512→256 + GELU + Dropout + FC → C classes) → Softmax
+Training: AdamW (LR 2e-3, WD 1e-4)  Cosine Annealing Warm Restarts  Weighted CE + Label Smoothing ε=0.1
+Runtime: PyTorch 2.x / ONNX Runtime  AWS ECS GPU (A10G / T4)  Target ≥ 100 req/s
+ ▼
+ LAYER 4 — LANGUAGE & SYNTHESIS
+ Phoneme → Word: CMU Pronouncing Dictionary alignment + Levenshtein edit-distance recovery + beam search (width=3)
+LM Re-ranking: GPT-2 / DistilGPT-2 / Indic-LM (AI4Bharat) — score = −Loss_LM(sentence); top-1 selected
+TTS: FastSpeech2 (acoustic model) + HiFi-GAN (vocoder) + d-vector / x-vector speaker embedding
+Output: 16-bit PCM WAV @ 22.05 kHz  MOS ≥ 3.5  TTS latency < 200 ms  Personalized from ≥ 5 min pre-loss audio
+Runtime: ONNX Runtime / TensorRT  Shared GPU pool with inference service
+ ▼
+ OUTPUT & USER EXPERIENCE LAYER
+ Companion App (Android): Real-time audio playback (< 500 ms end-to-end)  BLE pairing & calibration  Voice profile management  OTA
+firmware
+Clinician Dashboard: Usage analytics, phoneme accuracy trends, error logs
+Offline Mode (future): Cached TTS for ~50 common phrases  Partial edge inference after quantization
+APIs: POST /v1/ingest  POST /v1/synthesize  POST /v1/calibrate  GET /v1/health
+ Figure 1. Complete data path from physiological sensors to personalized speech output.
+ 
+Sathvani AVC — Confidential
+Page 2
+3. Connected Tech Stack by Layer
+Every component is mapped to the concrete technologies specified in the Technical Requirements Document.
+Layer / Function
+Technology / Component
+Key Specs / Role
+Sensor — Vibration
+PVDF Piezo Film + external 32-bit ADC
+~50 pC/N, 0.1 Hz–20 kHz; primary signal (~60-70%
+SHAP)
+Sensor — Acoustic
+MEMS Mic (SPH0645 or equiv.) via I2S
+16-bit, 16 kHz, SNR 64 dB
+Sensor — Pressure
+Differential Pressure (MPXV7002 or equiv.) I2C
+±2 kPa, 2.5% FS accuracy
+Sensor — Airflow
+Thermal Mass (FS1015 or equiv.) I2C
+0–30 m/s, ±3% accuracy
+Edge MCU
+ESP32-S3 (Xtensa LX7 dual-core)
+240 MHz, WiFi 4 + BLE 5.0, FreeRTOS
+Streaming Protocol
+UDP over WiFi + application-layer reliability
+Header (seq, ts, mask) + payload + CRC16; DTLS 1.3
+Cloud Ingestion
+AWS Kinesis / Apache Kafka
+Real-time streams; 50 KB/s × 2,300 devices (Y1)
+Feature Engineering
+AWS Lambda + Python (Pandas, NumPy)
+13-descriptor vector; < 100 ms latency
+Inference Service
+AWS ECS (GPU) + PyTorch / ONNX Runtime
+A10G instance; ≥ 100 req/s target
+Language Model
+GPT-2 / DistilGPT-2 / Indic-LM (HuggingFace)
+Re-ranking for sentence plausibility
+TTS Engine
+FastSpeech2 + HiFi-GAN
+Non-autoregressive mel + GAN waveform; < 200 ms
+Speaker Embedding
+d-vector / x-vector (256-dim)
+Personalization from 5-min pre-loss audio
+API Gateway
+AWS API Gateway / Cloudflare
+Rate limiting, auth, routing; 10 K req/day (Y1)
+Database
+PostgreSQL + Redis
+User profiles, voice models, logs; 100 GB
+Object Storage
+AWS S3 (encrypted)
+Audio, model artifacts, datasets; 5 TB (Y1)
+Monitoring
+Prometheus + Grafana + CloudWatch
+Latency, accuracy, drift, health dashboards
+CI/CD & IaC
+GitHub Actions + Terraform
+Full pipeline automation
+Mobile App
+Android (Kotlin / Java) + BLE 5.0
+Pairing, playback, calibration, OTA
+Security (Transit)
+TLS 1.3 / DTLS 1.3
+All device-cloud and app-cloud channels
+Security (Rest)
+AES-256-GCM
+Patient audio, sensor data, voice models
+AuthN / AuthZ
+OAuth 2.0 + JWT (RS256) + RBAC
+Patient / Clinician / Admin / Researcher roles
+Compliance
+DPDP Act 2023  HIPAA  GDPR  ISO 13485 
+IEC 62304
+Consent, localization, BAA, QMS, risk management
+ Table 1. Complete technology mapping from sensors to compliance frameworks.
+ 
+4. Model Architecture Snapshot
+The core phoneme reconstruction network is a lightweight CNN-BiLSTM-Attention stack designed for cloud inference
+with a clear path to edge quantization (INT8 via ONNX / TFLite Micro on ESP32-S3 PSRAM, later ESP32-P4 /
+Ethos-U55).
+Stage
+Configuration
+Output Shape
+~Params
+Input
+13 engineered descriptors
+(B, T, 13)
+—
+Projection
+Linear(13→32) + GELU + LayerNorm
+(B, T, 32)
+~448
+CNN Blocks
+3× Conv1d (32→64→128→256, k=3) + BN + GELU +
+Dropout(0.2)
+(B, 256, T)
+~129 K
+BiLSTM
+3 layers, 256 hidden, bidirectional
+(B, T, 512)
+~4.2 M
+Self-Attention
+4 heads, d_k=128, residual + LayerNorm
+(B, T, 512)
+~1.05 M
+Classification
+LN + FC(512→256) + GELU + Drop + FC → C
+(B, T, C)
+~132 K
+Total
+Lightweight — suitable for cloud + future edge
+~5.5 M
+ Table 2. CNN-BiLSTM-Attention model topology (from TRD §5.1).
+ 
+Sathvani AVC — Confidential
+Page 3
+5. Feature Importance (Research Baseline)
+SHAP values from an auxiliary XGBoost model on the 13-descriptor space (research dataset). Pressure, velocity and
+ratio features currently show near-zero contribution — a critical monitoring metric for real-patient data collection.
+Rank
+Feature
+SHAP Value
+Interpretation
+1
+RMS Amplitude
+0.4134
+Dominant energy predictor
+2
+Phoneme-Class
+0.2671
+Articulation group prior
+3
+ΔRMS
+0.1842
+Local energy transition
+4
+Duration
+0.1336
+Phoneme length discrimination
+5
+SPL
+0.1058
+Sound pressure level
+6
+ΔSPL
+0.0677
+Local SPL transition
+ Table 3. Top SHAP-ranked features on research baseline (TRD §5.3).
+ 
+6. Critical Path & Edge Roadmap
+Critical Path to Commercial Launch:
+1. Sensor signal validation on patients (Phase 1–2) → gates AI model reliability
+2. AI model v2 training on real patient data (Phase 3) → gates clinical efficacy claim
+3. 10-patient pilot completion at AIIMS Bibinagar (Phase 3) → gates regulatory submission
+4. CDSCO manufacturing license (Phase 4) → gates commercial sales in India
+5. FDA 510(k) / De Novo clearance (Phase 4) → gates US market entry
+Edge Quantization Roadmap:
+ Current: Full inference in cloud; ESP32-S3 does acquisition + streaming only.
+ 2027: INT8 quantization of CNN-BiLSTM (ONNX + TFLite Micro); partial phoneme classification on edge (top-3
+candidates); ≤ 2 MB model size.
+ 2028: Evaluate ESP32-P4 or ARM Cortex-M55 + Ethos-U55 NPU for full edge inference; < 100 ms latency for 50
+common phrases; cloud reserved for personalization and analytics.
+Source documents: AVC Technical Requirements Document (TRD) v1.0, Product Requirements Document (PRD) v1.0, Implementation Plan
+ v1.0 — August 2026. All figures and mappings derived directly from these specifications.
+ — End of Architecture & Tech Stack Document —
+ 
