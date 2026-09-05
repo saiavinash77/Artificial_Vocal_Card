@@ -1,0 +1,34 @@
+menu "AVC Configuration"
+
+    config AVC_WIFI_SSID
+        string "WiFi SSID"
+        default "CHANGE_ME"
+        help
+            2.4 GHz network the ESP32-S3 joins to stream packets.
+
+    config AVC_WIFI_PASS
+        string "WiFi password"
+        default "CHANGE_ME"
+
+    config AVC_DEST_IP
+        string "Gateway IP (UDP receiver)"
+        default "192.168.1.100"
+        help
+            IPv4 address of the PC/gateway running the UDP capture script
+            (scripts/udp_capture.py). One datagram per 500 ms window.
+
+    config AVC_DEST_PORT
+        int "Gateway UDP port"
+        default 7777
+        range 1 65535
+
+    config AVC_SYNTHETIC_SENSORS
+        bool "Synthetic sensor data (no real hardware attached)"
+        default y
+        help
+            Generates a deterministic test signal on all four channels so
+            the packet → WiFi → UDP → Python parse path can be validated
+            with only the board present. Disable once real sensor drivers
+            are wired in.
+
+endmenu

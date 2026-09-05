@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# Model weights (tracked conventions live in models/README.md)
+models/*.onnx
+models/*.pt
+models/*.tflite
+models/*.bin
+
+# Captures + generated audio (udp_capture.py / CLI smoke outputs)
+capture/
+*.wav
+
+# ESP-IDF firmware build artifacts
+firmware/build/
+firmware/sdkconfig.old
+firmware/dependencies.lock
+firmware/managed_components/
+firmware/test/test_packet
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
