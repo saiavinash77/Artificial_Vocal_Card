@@ -19,12 +19,14 @@
  * Requires ESP-IDF v5.x (esp_wifi, lwip sockets, esp_timer).
  */
 #include <errno.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
 
+#include "driver/uart.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
@@ -33,6 +35,7 @@
 #include "lwip/sockets.h"
 #include "nvs_flash.h"
 
+#include "onset.h"
 #include "packet.h"
 
 /* ---- configuration (firmware/main/Kconfig.projbuild; fallbacks shown) */
@@ -57,11 +60,36 @@
 #else
 #define AVC_DEST_PORT 7777
 #endif
+#ifdef CONFIG_AVC_SERIAL_BAUD
+#define AVC_SERIAL_BAUD CONFIG_AVC_SERIAL_BAUD
+#else
+#define AVC_SERIAL_BAUD 921600
+#endif
+#ifdef CONFIG_AVC_TRANSPORT
+#define AVC_TRANSPORT CONFIG_AVC_TRANSPORT
+#else
+#define AVC_TRANSPORT "usb_serial"
+#endif
+#if defined(CONFIG_AVC_SENSOR_SET_CLOSED4)
+#define AVC_SENSOR_SET_CLOSED4 1
+#else
+#define AVC_SENSOR_SET_CLOSED4 0
+#endif
+#ifdef CONFIG_AVC_ONSET_GATE
+#define AVC_ONSET_GATE 1
+#else
+#define AVC_ONSET_GATE 0
+#endif
 #ifdef CONFIG_AVC_SYNTHETIC_SENSORS
 #define AVC_SYNTHETIC_SENSORS 1
 #else
 #define AVC_SYNTHETIC_SENSORS 0
 #endif
+
+#define TRANSPORT_IS_CSV (strcmp(AVC_TRANSPORT, "usb_serial") == 0 || \
+                          strcmp(AVC_TRANSPORT, "both") == 0)
+#define TRANSPORT_IS_UDP (strcmp(AVC_TRANSPORT, "udp") == 0 || \
+                         strcmp(AVC_TRANSPORT, "both") == 0)
 
 static const char *TAG = "avc";
 
@@ -79,7 +107,7 @@ static volatile uint16_t s_pressure_n;
 static volatile uint16_t s_airflow_n;
 static uint32_t s_seq_no;
 
-/* ---- WiFi + UDP ------------------------------------------------------- */
+/* ---- WiFi + UDP (transport 'udp' / 'both' only) ---------------------- */
 
 #define WIFI_CONNECTED_BIT BIT0
 static EventGroupHandle_t s_wifi_events;
@@ -138,8 +166,16 @@ static void wifi_init(void)
 static int s_sock = -1;
 static struct sockaddr_in s_dest;
 
+static int wifi_transport_needed(void)
+{
+    return TRANSPORT_IS_UDP;  /* strcmp resolved at compile time via -O */
+}
+
 static void udp_init(void)
 {
+    if (!wifi_transport_needed()) {
+        return;                    /* usb_serial mode: no WiFi at all */
+    }
     s_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
     if (s_sock < 0) {
         ESP_LOGE(TAG, "socket() failed: errno=%d", errno);
@@ -165,6 +201,147 @@ static void udp_send(const uint8_t *pkt, size_t len)
     } else if ((size_t)sent != len) {
         ESP_LOGW(TAG, "sendto() partial: %d/%u", sent, (unsigned)len);
     }
+}
+
+/* ---- USB-serial CSV transport (default; SATHVANI doc §8 MVP) --------- */
+
+static const char B64[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/* Append base64 of n little-endian int16 samples to the output buffer.
+ * Returns bytes appended, or -1 when out of capacity. A full open2
+ * window needs ~24.4 KB binary -> ~32.5 KB base64. */
+static int b64_append_int16(char *out, size_t cap, const int16_t *samples,
+                            size_t n)
+{
+    size_t need = ((n * 2u + 2u) / 3u) * 4u;
+    if (need + 1u > cap) {
+        return -1;
+    }
+    size_t o = 0;
+    const uint8_t *b = (const uint8_t *)samples;
+    size_t full = (n * 2u) / 3u;
+    for (size_t g = 0; g < full; ++g) {
+        uint32_t v = ((uint32_t)b[3 * g] << 16) | ((uint32_t)b[3 * g + 1] << 8) |
+                     (uint32_t)b[3 * g + 2];
+        out[o++] = B64[(v >> 18) & 0x3F];
+        out[o++] = B64[(v >> 12) & 0x3F];
+        out[o++] = B64[(v >> 6) & 0x3F];
+        out[o++] = B64[v & 0x3F];
+    }
+    size_t rem = (n * 2u) - full * 3u;
+    if (rem == 1u) {
+        uint32_t v = (uint32_t)b[full * 3u] << 16;
+        out[o++] = B64[(v >> 18) & 0x3F];
+        out[o++] = B64[(v >> 12) & 0x3F];
+        out[o++] = '=';
+        out[o++] = '=';
+    } else if (rem == 2u) {
+        uint32_t v = ((uint32_t)b[full * 3u] << 16) |
+                     ((uint32_t)b[full * 3u + 1] << 8);
+        out[o++] = B64[(v >> 18) & 0x3F];
+        out[o++] = B64[(v >> 12) & 0x3F];
+        out[o++] = B64[(v >> 6) & 0x3F];
+        out[o++] = '=';
+    }
+    return (int)o;
+}
+
+/* Build one AVC1 CSV line (gateway mirror: scripts/csv_logger.py
+ * parse_csv_line). Layout:
+ *   AVC1,<seq>,<ts_ms>,<mask_hex>,<onset>,<label>,<b64 mic>,<b64 piezo>,<crc>
+ * The label is empty from the device; the logger attaches word labels.
+ * Returns line length (NUL-terminated), or 0 on capacity/argument errors. */
+static size_t csv_build_line(char *out, size_t cap, uint32_t seq,
+                              uint32_t ts_ms, uint8_t mask, int onset,
+                              const int16_t *mic, size_t mic_n,
+                              const int16_t *piezo, size_t piezo_n)
+{
+    if (out == NULL || cap == 0u) {
+        return 0u;
+    }
+    int hdr = snprintf(out, cap, "AVC1,%lu,%lu,%02x,%d,,",
+                       (unsigned long)seq, (unsigned long)ts_ms,
+                       (unsigned)mask, onset);
+    /* NOTE the ',,' — onset field, then an EMPTY label field (the
+     * device never labels; scripts/csv_logger.py attaches word labels).
+     * Mirror of: fields=[MAGIC,seq,ts,mask,onset,label] in csv_line. */
+    if (hdr <= 0 || (size_t)hdr >= cap) {
+        return 0u;
+    }
+    size_t o = (size_t)hdr;
+    if (mask & AVC_SENSOR_MIC) {
+        if (mic == NULL) {
+            return 0u;
+        }
+        int n = b64_append_int16(out + o, cap - o, mic, mic_n);
+        if (n < 0) {
+            return 0u;
+        }
+        o += (size_t)n;
+    }
+    if (mask & AVC_SENSOR_PIEZO) {
+        if (o < cap) {
+            out[o++] = ',';
+        }
+        if (piezo == NULL) {
+            return 0u;
+        }
+        int n = b64_append_int16(out + o, cap - o, piezo, piezo_n);
+        if (n < 0) {
+            return 0u;
+        }
+        o += (size_t)n;
+    }
+    /* CRC16 over everything before the trailing comma, as hex */
+    uint16_t crc = avc_crc16((const uint8_t *)out, o);
+    int tail = snprintf(out + o, cap - o, ",%04x", (unsigned)crc);
+    if (tail <= 0 || (size_t)tail >= cap - o) {
+        return 0u;
+    }
+    return o + (size_t)tail;
+}
+
+/* ---- USB serial -------------------------------------------------------- */
+
+static void serial_csv_init(void)
+{
+    if (!TRANSPORT_IS_CSV) {
+        return;
+    }
+    const uart_config_t cfg = {
+        .baud_rate = AVC_SERIAL_BAUD,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .source_clk = UART_SCLK_DEFAULT,
+    };
+    /* USB-UART on the ESP32-S3 DevKitC is UART0 (the console). */
+    uart_param_config(UART_NUM_0, &cfg);
+    uart_set_pin(UART_NUM_0, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE,
+                 UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    uart_driver_install(UART_NUM_0, 256, 0, 0, NULL, 0);
+}
+
+/* One CSV line per window (~32.5 KB open2) + slack. */
+static char s_csv[36 * 1024];
+
+static void csv_send_window(uint32_t seq, uint32_t ts_ms, uint8_t mask,
+                            int onset)
+{
+    size_t len = csv_build_line(s_csv, sizeof(s_csv), seq, ts_ms, mask,
+                               onset,
+                               s_mic, s_mic_n,
+                               s_piezo, s_piezo_n);
+    if (len == 0u) {
+        ESP_LOGE(TAG, "csv_build_line failed (window too big?)");
+        return;
+    }
+    s_csv[len] = '\n';
+    /* One blocking write per window; 32.5 KB @ 921600 8N1 is ~353 ms,
+     * which fits the 500 ms period with margin. */
+    uart_write_bytes(UART_NUM_0, s_csv, len + 1);
 }
 
 /* ---- sensor drivers --------------------------------------------------- */
@@ -211,26 +388,51 @@ static void reset_window(void)
     s_airflow_n = 0;
 }
 
-/* Emit one packet for the just-completed window. */
+/* Emit one window for the just-completed 500 ms acquisition. */
 static void emit_window(void)
 {
-    const avc_sensor_block_t blocks[4] = {
-        {AVC_SENSOR_MIC,      s_mic,      s_mic_n},
-        {AVC_SENSOR_PIEZO,    s_piezo,    s_piezo_n},
-        {AVC_SENSOR_PRESSURE, s_pressure, s_pressure_n},
-        {AVC_SENSOR_AIRFLOW,  s_airflow,  s_airflow_n},
-    };
-    size_t len = avc_packet_build(s_seq_no++,
-                                  (uint32_t)(esp_timer_get_time() / 1000),
-                                  blocks, 4, s_pkt, sizeof(s_pkt));
-    if (len == 0) {
-        ESP_LOGE(TAG, "packet build failed (window overrun?)");
+    uint8_t mask = AVC_SENSOR_MIC | AVC_SENSOR_PIEZO;
+    if (AVC_SENSOR_SET_CLOSED4) {
+        mask |= AVC_SENSOR_PRESSURE | AVC_SENSOR_AIRFLOW;
+    }
+
+#if AVC_ONSET_GATE
+    /* Firmware pre-filter (SATHVANI §5): drop silent windows early to
+     * save serial bandwidth. OFF by default — the gateway's int16-scale
+     * gate makes the split decision. */
+    if (!avc_onset_window(s_mic, s_mic_n, AVC_MIC_RATE_HZ)) {
+        ESP_LOGI(TAG, "seq=%lu dropped (silent)", (unsigned long)s_seq_no);
+        s_seq_no++;
         return;
     }
-    udp_send(s_pkt, len);
-    ESP_LOGI(TAG, "seq=%lu mic=%u piezo=%u press=%u air=%u len=%u",
-             (unsigned long)(s_seq_no - 1), s_mic_n, s_piezo_n,
-             s_pressure_n, s_airflow_n, (unsigned)len);
+#endif
+
+    if (TRANSPORT_IS_CSV) {
+        csv_send_window(s_seq_no,
+                        (uint32_t)(esp_timer_get_time() / 1000),
+                        mask, AVC_ONSET_GATE ? 1 : 0);
+    }
+    if (TRANSPORT_IS_UDP) {
+        const avc_sensor_block_t blocks[4] = {
+            {AVC_SENSOR_MIC,      s_mic,      s_mic_n},
+            {AVC_SENSOR_PIEZO,    s_piezo,    s_piezo_n},
+            {AVC_SENSOR_PRESSURE, s_pressure, s_pressure_n},
+            {AVC_SENSOR_AIRFLOW,  s_airflow,  s_airflow_n},
+        };
+        uint8_t n_blocks = (uint8_t)(AVC_SENSOR_SET_CLOSED4 ? 4 : 2);
+        size_t len = avc_packet_build(s_seq_no,
+                                      (uint32_t)(esp_timer_get_time() / 1000),
+                                      blocks, n_blocks, s_pkt, sizeof(s_pkt));
+        if (len == 0u) {
+            ESP_LOGE(TAG, "packet build failed (window overrun?)");
+        } else {
+            udp_send(s_pkt, len);
+            ESP_LOGI(TAG, "seq=%lu mic=%u piezo=%u len=%u",
+                     (unsigned long)s_seq_no, s_mic_n, s_piezo_n,
+                     (unsigned)len);
+        }
+    }
+    s_seq_no++;
 }
 
 static void acquisition_task(void *arg)
@@ -254,12 +456,14 @@ static void acquisition_task(void *arg)
             if ((tick % piezo_div) == 0 && s_piezo_n < AVC_PIEZO_WINDOW_MAX) {
                 s_piezo[s_piezo_n++] = synth_piezo_sample();
             }
-            if ((tick % slow_div) == 0) {
-                if (s_pressure_n < AVC_PRESSURE_WINDOW_MAX) {
-                    s_pressure[s_pressure_n++] = synth_pressure_sample();
-                }
-                if (s_airflow_n < AVC_AIRFLOW_WINDOW_MAX) {
-                    s_airflow[s_airflow_n++] = synth_airflow_sample();
+            if (AVC_SENSOR_SET_CLOSED4) {
+                if ((tick % slow_div) == 0) {
+                    if (s_pressure_n < AVC_PRESSURE_WINDOW_MAX) {
+                        s_pressure[s_pressure_n++] = synth_pressure_sample();
+                    }
+                    if (s_airflow_n < AVC_AIRFLOW_WINDOW_MAX) {
+                        s_airflow[s_airflow_n++] = synth_airflow_sample();
+                    }
                 }
             }
             ++tick;
@@ -277,11 +481,15 @@ static void acquisition_task(void *arg)
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "AVC firmware starting (synthetic=%d dest=%s:%u)",
-             AVC_SYNTHETIC_SENSORS, AVC_DEST_IP, AVC_DEST_PORT);
+    ESP_LOGI(TAG, "AVC firmware starting (synthetic=%d transport=%s set=%s)",
+             AVC_SYNTHETIC_SENSORS, AVC_TRANSPORT,
+             AVC_SENSOR_SET_CLOSED4 ? "closed4" : "open2");
 
-    wifi_init();
-    udp_init();
+    serial_csv_init();
+    if (wifi_transport_needed()) {
+        wifi_init();
+        udp_init();
+    }
 
     if (xTaskCreatePinnedToCore(acquisition_task, "acq", 4096, NULL, 5,
                                 NULL, 1) != pdPASS) {

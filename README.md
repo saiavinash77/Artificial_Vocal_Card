@@ -43,6 +43,26 @@ without any code changes (see `models/README.md`).
 
 ## Live capture from the board
 
+**Data-collection phase (default transport `usb_serial`):**
+
+```bash
+python scripts/csv_logger.py --port COM5 --baud 921600 --speaker sai --prompt --out data
+```
+
+The logger validates every line (CRC16), splits windows into labeled
+repetitions (gateway-side onset gate, SATHVANI §5 semantics), writes
+`data/session_*/rep_*_<word>.csv` + `manifest.json`, and replays any
+rep through the pipeline:
+
+```bash
+python scripts/csv_logger.py --replay data/session_*/rep_000_hello.csv
+```
+
+No hardware? `--self-test` runs the whole logger path on synthetic
+windows (generate → validate → split → write → replay → pipeline).
+
+**Binary packets (transport `udp`):**
+
 ```bash
 python scripts/udp_capture.py --port 7777 --out capture
 ```

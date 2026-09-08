@@ -1,10 +1,45 @@
 menu "AVC Configuration"
 
+    choice AVC_SENSOR_SET
+        prompt "Sensor set"
+        default AVC_SENSOR_SET_OPEN2
+        help
+            Which hardware variant the firmware streams. open2 = the
+            Open Device (mic + piezo only, packets with sensor_mask 0x03).
+            closed4 = the closed-device reference with all four TRD
+            sensors. This only gates which channels are populated; the
+            wire format is identical for both.
+
+        config AVC_SENSOR_SET_OPEN2
+            bool "Open Device (mic + piezo)"
+        config AVC_SENSOR_SET_CLOSED4
+            bool "Closed Device (mic + piezo + pressure + airflow)"
+    endchoice
+
+    config AVC_TRANSPORT
+        string "Transport"
+        default "usb_serial"
+        help
+            usb_serial = emit one CSV line per 500 ms window over the
+            USB-UART at AVC_SERIAL_BAUD (data-collection phase, SATHVANI
+            doc §8). udp = one binary packet datagram per window to the
+            gateway. both = send CSV on serial AND UDP datagrams (for
+            capture cross-checks).
+
+    config AVC_SERIAL_BAUD
+        int "USB serial baud rate"
+        default 921600
+        range 115200 2000000
+        help
+            921600 is the doc §8 MVP rate; 500 ms windows stay well under
+            the line's throughput at this speed.
+
     config AVC_WIFI_SSID
         string "WiFi SSID"
         default "CHANGE_ME"
         help
-            2.4 GHz network the ESP32-S3 joins to stream packets.
+            2.4 GHz network the ESP32-S3 joins to stream UDP packets
+            (ignored when AVC_TRANSPORT=usb_serial).
 
     config AVC_WIFI_PASS
         string "WiFi password"
@@ -22,13 +57,23 @@ menu "AVC Configuration"
         default 7777
         range 1 65535
 
+    config AVC_ONSET_GATE
+        bool "Speech onset/offset gate (drop silent windows)"
+        default n
+        help
+            Ports the SATHVANI doc §5 pre-filter into firmware: a window
+            is only emitted when mic RMS is between the onset threshold
+            and the offset threshold (noise floor 20000, onset 50000,
+            20-frame hangover). Saves serial bandwidth during data
+            collection; keep OFF when the gateway should decide.
+
     config AVC_SYNTHETIC_SENSORS
         bool "Synthetic sensor data (no real hardware attached)"
         default y
         help
-            Generates a deterministic test signal on all four channels so
-            the packet → WiFi → UDP → Python parse path can be validated
-            with only the board present. Disable once real sensor drivers
-            are wired in.
+            Generates a deterministic test signal on all channels so
+            the packet → transport → Python parse path can be validated
+            with only the board present. Disable once real sensor
+            drivers are wired in.
 
 endmenu

@@ -20,6 +20,9 @@ capture/*
 !capture/demo.hex
 *.wav
 
+# Session datasets from csv_logger.py (HUMAN SUBJECT DATA - never commit)
+data/
+
 # ESP-IDF firmware build artifacts
 firmware/build/
 firmware/sdkconfig.old

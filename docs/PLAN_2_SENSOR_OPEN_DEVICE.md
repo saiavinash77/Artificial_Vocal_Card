@@ -97,7 +97,7 @@ New Kconfig: `AVC_SENSOR_SET` = `open2` (default) | `closed4`; `AVC_TRANSPORT` =
 | **M2.1** | Python: piezo rate 8 kHz + zero-fill tests; CLI demo emits 2-sensor packets | all tests green; `capture/demo.hex` regenerated as mic+piezo only | ✅ done (74 tests, 8 kHz pinned both sides incl. C rate CHECKs) |
 | **M2.2** | Firmware: ADS126x SPI driver (piezo) | reads DRDY interrupts at 8 kSPS on DevKitC; CRC-valid packets on USB | ⏸ blocked on board |
 | **M2.3** | Firmware: ICS-43434 I2S driver (mic, 16 kHz) | mic + piezo in ONE 500 ms packet (dual-core split per doc §7) | ⏸ blocked on board |
-| **M2.4** | `scripts/csv_logger.py` (921600 baud, onset-gated, word-label prompts) | logged CSV parses into packets; dataset-ready columns | pending |
+| **M2.4** | `scripts/csv_logger.py` (921600 baud, onset-gated, word-label prompts) | logged CSV parses into packets; dataset-ready columns | ✅ done (86 tests; self-test replays CSV→pipeline; onset gate lockstep C↔Python) |
 | **M2.5** | End-to-end: board → CSV/packets → pipeline → text | demo run with real board data on the desk | blocked on M2.2–M2.4 |
 
 Blocked-until-hardware: M2.2–M2.3 need the DevKitC + ADS126x module wired per doc §4.3
@@ -116,10 +116,11 @@ Blocked-until-hardware: M2.2–M2.3 need the DevKitC + ADS126x module wired per 
    (mask 0x03) golden vector added to `firmware/test/test_packet.c`, and
    the 8 kHz / 4000-sample contract is pinned by explicit CHECKs on the
    C side + `test_rates_pinned` on the Python side.
-3. **Transport priority** — doc says USB serial CSV for the data-collection
-   phase; our firmware currently speaks UDP. Build CSV first (aligns with
-   dataset milestone) or keep UDP and add CSV later? *(Default: CSV first
-   on this branch — M2.4.)*
+3. **Transport priority** — ✅ RESOLVED (M2.4, plan default): **CSV
+   first on USB serial** (default `AVC_TRANSPORT=usb_serial`); UDP
+   stays available (`udp` / `both`). `scripts/csv_logger.py` is the
+   data-collection front end; `--featurize` writes M3-ready
+   13-descriptor rows per rep.
 4. **License for the repo** — still unanswered; needed before outside
    contributors / dataset sharing. MIT vs Apache-2.0?
 

@@ -30,6 +30,8 @@ airflow (100 Hz) ──┘                    └→ scripts/udp_capture.py (Pyt
 
 ## Wire format (pinned — do not change one side without the other)
 
+**Binary packets (transport `udp`):**
+
 ```
 Header (9 bytes, LE):   uint32 seq_no | uint32 timestamp_ms | uint8 sensor_mask
                         (bit0=mic, bit1=piezo, bit2=pressure, bit3=airflow)
@@ -38,6 +40,19 @@ Payload: per enabled sensor, ascending bit order:
 Footer:                 uint16 CRC16-CCITT (poly 0x1021, init 0xFFFF,
                         no reflect, no final xor) over header+payload
 ```
+
+**CSV lines (transport `usb_serial`, the data-collection default —
+SATHVANI doc §8; gateway: `scripts/csv_logger.py`):**
+
+```
+AVC1,<seq>,<ts_ms>,<mask_hex>,<onset>,<label>,<b64 mic>,<b64 piezo>,<crc16_hex>
+```
+
+Samples are the same int16 raw counts as the binary packet, base64
+little-endian, one line per 500 ms window (~32.5 KB open2 — fits the
+921600 baud line). CRC16-CCITT over the ASCII prefix before the last
+comma catches serial corruption. The device emits an empty `<label>`
+field; the gateway logger attaches word labels per repetition.
 
 Max packet ≈ 24 KB (all four sensors at full 500 ms budgets:
 8000 + 4000 + 50 + 50 samples; an open-device mic+piezo packet at full
