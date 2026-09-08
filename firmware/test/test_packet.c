@@ -172,12 +172,37 @@ int main(void)
             "2a00000063000000010000e020");
     }
 
+    /* ---- golden vector: open-device 2-sensor (mic + piezo), mask 0x03 ----
+     * seq 287454020 (0x11223344), ts 48879 (0x0000BEEF)
+     * mic [16384, -8192, 0], piezo [3277, -3277]  (pre-quantized int16)
+     * Generated with piezo rate pinned 8 kHz (ADS126x) — rate is applied
+     * at parse time, not in the bytes, so this vector is also the
+     * wire-format proof that open2 packets are plain mask-0x03 packets. */
+    {
+        static const int16_t mic3[] = {16384, -8192, 0};
+        static const int16_t piezo2[] = {3277, -3277};
+        const avc_sensor_block_t blocks[2] = {
+            {AVC_SENSOR_MIC,    mic3,   3},
+            {AVC_SENSOR_PIEZO, piezo2, 2},
+        };
+        check_vector("VEC_OPEN2", 287454020u, 48879u, blocks, 2,
+            "44332211efbe0000030300004000e000000200cd0c33f37914");
+    }
+
     /* ---- header constants pinned against the Python side ---- */
     CHECK(AVC_PACKET_HEADER_SIZE == 9u, "header size != 9");
     CHECK(AVC_PACKET_FOOTER_SIZE == 2u, "footer size != 2");
     CHECK(AVC_SENSOR_MIC == 0x01u && AVC_SENSOR_PIEZO == 0x02u &&
           AVC_SENSOR_PRESSURE == 0x04u && AVC_SENSOR_AIRFLOW == 0x08u,
           "sensor bit constants drifted from Python mask layout");
+
+    /* ---- open-device rates pinned against services/ingest.py ----
+     * Piezo is the ADS126x @ 8 kSPS on the open device (SATHVANI doc
+     * v1.0 §7). Closed-device TRD was 1 kHz (master branch reference). */
+    CHECK(AVC_PIEZO_RATE_HZ == 8000u, "piezo rate != 8 kHz (open device)");
+    CHECK(AVC_PIEZO_WINDOW_MAX == 4000u, "piezo window != 4000 samples");
+    CHECK(AVC_MIC_RATE_HZ == 16000u && AVC_PRESSURE_RATE_HZ == 100u &&
+          AVC_AIRFLOW_RATE_HZ == 100u, "other rates drifted from Python");
 
     /* ---- argument validation ---- */
     {

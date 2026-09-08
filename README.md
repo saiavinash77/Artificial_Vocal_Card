@@ -5,7 +5,7 @@ sensors, streams packets to a gateway, and a Python pipeline turns them
 into phonemes → words → synthesized speech.
 
 ```
-ESP32-S3 (mic 16 kHz, piezo 1 kHz, pressure 100 Hz, airflow 100 Hz)
+ESP32-S3 (mic 16 kHz, piezo 8 kHz, pressure 100 Hz, airflow 100 Hz)
    │  one UDP datagram per 500 ms window (pinned wire format + CRC16)
    ▼
 services.pipeline: ingest → segment → 13 descriptors → classifier
@@ -13,8 +13,12 @@ services.pipeline: ingest → segment → 13 descriptors → classifier
 ```
 
 **Status:** Milestone 1 — runnable end-to-end software reference
-(71 tests green) + firmware skeleton with lockstep-tested packet format
-and synthetic-sensor mode. See [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)
+(74 tests green) + firmware skeleton with lockstep-tested packet format
+and synthetic-sensor mode. Branch `feature/2-sensor-open-device`:
+2-sensor open-device migration **M2.1 done** (piezo pinned 8 kHz both
+sides, 2-sensor zero-fill tested, `capture/demo.hex` regenerated as
+mic+piezo). See [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)
+and [`docs/PLAN_2_SENSOR_OPEN_DEVICE.md`](docs/PLAN_2_SENSOR_OPEN_DEVICE.md)
 for architecture, locked contracts, and the roadmap to the >85% / <500 ms
 TRD targets.
 
@@ -23,13 +27,14 @@ TRD targets.
 Python 3.11+, numpy — nothing else required:
 
 ```bash
-python -m unittest discover -s tests        # 71 tests
+python -m unittest discover -s tests        # 74 tests
 ```
 
-Run the pipeline on a capture file (one hex packet per line):
+Run the pipeline on a capture file (one hex packet per line; the default
+`capture/demo.hex` is an **open-device 2-sensor capture**, mic + piezo):
 
 ```bash
-python -m services.pipeline capture/seq_7.hex --backend demo --tts silent --report
+python -m services.pipeline capture/demo.hex --backend demo --tts silent --report
 ```
 
 With a trained model (later milestones), `--backend onnx` and

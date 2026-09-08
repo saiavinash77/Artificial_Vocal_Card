@@ -7,12 +7,17 @@ per window to the gateway host.
 
 ```
 mic (I2S, 16 kHz) ─┐
-piezo (ADC, 1 kHz) ─┤  500 ms window → packet.c → CRC16 → UDP datagram
+piezo (SPI ADS126x, 8 kHz) ─┤  500 ms window → packet.c → CRC16 → UDP datagram
 pressure (100 Hz) ─┤                    │
 airflow (100 Hz) ──┘                    └→ scripts/udp_capture.py (Python)
                                           → services.ingest.parse_packet
                                           → services.pipeline (Layers 2–4)
 ```
+
+> **Open device (this branch):** only mic + piezo are populated — packets
+> go out with `sensor_mask = 0x03`; pressure/airflow blocks are simply
+> absent and the pipeline zero-fills their descriptors. The wire format
+> itself is unchanged.
 
 ## Layout
 
@@ -34,9 +39,10 @@ Footer:                 uint16 CRC16-CCITT (poly 0x1021, init 0xFFFF,
                         no reflect, no final xor) over header+payload
 ```
 
-Max packet ≈ 17 KB (all four sensors at full 500 ms budgets:
-8000 + 500 + 50 + 50 samples) — fits comfortably in one UDP datagram on
-the local network.
+Max packet ≈ 24 KB (all four sensors at full 500 ms budgets:
+8000 + 4000 + 50 + 50 samples; an open-device mic+piezo packet at full
+budget is ≈ 24.0 KB) — fits comfortably in one UDP datagram on the
+local network (IPv4 datagram ceiling is ~64 KB).
 
 ## Status: skeleton (Milestone 1)
 

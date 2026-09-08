@@ -23,8 +23,8 @@ We pin this repository's concrete, testable layout:
     ``frame_count * frame_size`` int16 LE samples, where frame_size is
     per-sensor (mic 1, others 1). All four streams are sampled at their
     own rates; a block simply carries whatever elapsed in the 500ms
-    window (mic 16kHz -> 8000 samples, piezo 1kHz -> 500, others 100Hz
-    -> 50).
+    window (mic 16kHz -> 8000 samples, piezo 8kHz -> 4000 (open device,
+    ADS126x 8 kSPS), others 100Hz -> 50).
 
     Footer: CRC16-CCITT (poly 0x1021, init 0xFFFF) over header+payload.
 
@@ -48,10 +48,12 @@ SENSOR_PIEZO = 0x02
 SENSOR_PRESSURE = 0x04
 SENSOR_AIRFLOW = 0x08
 
-#: sensor_mask bit -> (name, nominal rate). TRD section 4.1 rates.
+#: sensor_mask bit -> (name, nominal rate). Open device (SATHVANI doc
+#: v1.0 §7): piezo via ADS126x at 8 kSPS (jumpers OFF). The closed-device
+#: TRD spec was 1 kHz — master keeps that reference.
 _SENSOR_BITS: List[tuple] = [
     (SENSOR_MIC, "mic", 16_000),
-    (SENSOR_PIEZO, "piezo", 1_000),
+    (SENSOR_PIEZO, "piezo", 8_000),
     (SENSOR_PRESSURE, "pressure", 100),
     (SENSOR_AIRFLOW, "airflow", 100),
 ]
@@ -91,7 +93,7 @@ def build_packet(
     Floats are scaled by 32767 clamped (int16). Firmware performs the
     inverse. Exists for tests + offline replay of synthetic sessions.
     """
-    rates = rates or {"mic": 16_000, "piezo": 1_000, "pressure": 100, "airflow": 100}
+    rates = rates or {"mic": 16_000, "piezo": 8_000, "pressure": 100, "airflow": 100}
     mask = 0
     for bit, name, _ in _SENSOR_BITS:
         if name in streams:

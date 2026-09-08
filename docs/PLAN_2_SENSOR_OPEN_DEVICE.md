@@ -92,29 +92,36 @@ New Kconfig: `AVC_SENSOR_SET` = `open2` (default) | `closed4`; `AVC_TRANSPORT` =
 
 ## 3. Milestones on this branch
 
-| ID | Deliverable | Acceptance |
-|---|---|---|
-| **M2.1** | Python: piezo rate 8 kHz + zero-fill tests; CLI demo emits 2-sensor packets | all tests green; `capture/demo.hex` regenerated as mic+piezo only |
-| **M2.2** | Firmware: ADS126x SPI driver (piezo) | reads DRDY interrupts at 8 kSPS on DevKitC; CRC-valid packets on USB |
-| **M2.3** | Firmware: ICS-43434 I2S driver (mic, 16 kHz) | mic + piezo in ONE 500 ms packet (dual-core split per doc §7) |
-| **M2.4** | `scripts/csv_logger.py` (921600 baud, onset-gated, word-label prompts) | logged CSV parses into packets; dataset-ready columns |
-| **M2.5** | End-to-end: board → CSV/packets → pipeline → text | demo run with real board data on the desk |
+| ID | Deliverable | Acceptance | State |
+|---|---|---|---|
+| **M2.1** | Python: piezo rate 8 kHz + zero-fill tests; CLI demo emits 2-sensor packets | all tests green; `capture/demo.hex` regenerated as mic+piezo only | ✅ done (74 tests, 8 kHz pinned both sides incl. C rate CHECKs) |
+| **M2.2** | Firmware: ADS126x SPI driver (piezo) | reads DRDY interrupts at 8 kSPS on DevKitC; CRC-valid packets on USB | ⏸ blocked on board |
+| **M2.3** | Firmware: ICS-43434 I2S driver (mic, 16 kHz) | mic + piezo in ONE 500 ms packet (dual-core split per doc §7) | ⏸ blocked on board |
+| **M2.4** | `scripts/csv_logger.py` (921600 baud, onset-gated, word-label prompts) | logged CSV parses into packets; dataset-ready columns | pending |
+| **M2.5** | End-to-end: board → CSV/packets → pipeline → text | demo run with real board data on the desk | blocked on M2.2–M2.4 |
 
 Blocked-until-hardware: M2.2–M2.3 need the DevKitC + ADS126x module wired per doc §4.3
 (your friend's board — status says mic driver done, ADS126x pending).
 
 ## 4. Open questions for the user
 
-1. **Feature vector shape** — keep 13 descriptors (zero-fill pressure/airflow) or trim
-   to 11 for the open device? *(Plan default: keep 13.)*
-2. **Golden vectors** — regenerate VEC_ALL with 8 kHz piezo now, or keep 1 kHz legacy
-   vectors as closed-device fixtures in a separate file? *(Default: regenerate + move
-   old ones to `firmware/test/vectors_closed.h`.)*
-3. **Transport priority** — doc says USB serial CSV for the data-collection phase;
-   our firmware currently speaks UDP. Build CSV first (aligns with dataset milestone)
-   or keep UDP and add CSV later? *(Default: CSV first on this branch.)*
-4. **License for the repo** — still unanswered; needed before outside contributors /
-   dataset sharing. MIT vs Apache-2.0?
+1. **Feature vector shape** — ✅ RESOLVED (M2.1, plan default): **keep 13
+   descriptors, zero-fill pressure/airflow**. Locked by
+   `test_open2_pipeline_end_to_end_zero_fill` — model input contract
+   (B,T,13) untouched; closed-device upgrade remains a non-event.
+2. **Golden vectors** — ✅ RESOLVED (M2.1, deviation from default, with
+   evidence): legacy vectors are **byte-identical** under 8 kHz piezo
+   (verified — rates are applied at parse time, never serialized), so
+   no `vectors_closed.h` split is needed. Instead: new **VEC_OPEN2**
+   (mask 0x03) golden vector added to `firmware/test/test_packet.c`, and
+   the 8 kHz / 4000-sample contract is pinned by explicit CHECKs on the
+   C side + `test_rates_pinned` on the Python side.
+3. **Transport priority** — doc says USB serial CSV for the data-collection
+   phase; our firmware currently speaks UDP. Build CSV first (aligns with
+   dataset milestone) or keep UDP and add CSV later? *(Default: CSV first
+   on this branch — M2.4.)*
+4. **License for the repo** — still unanswered; needed before outside
+   contributors / dataset sharing. MIT vs Apache-2.0?
 
 ## 5. Risk notes
 

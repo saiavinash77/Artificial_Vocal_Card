@@ -29,7 +29,9 @@ def synth_stream(rate_hz, dur_ms, amp=0.5, freq_hz=200.0, seed=0):
 def packet_with_bursts(seed=7, bursts=3, gap_ms=60, burst_ms=90):
     """One 16 kHz mic packet: `bursts` voiced spans separated by silence.
 
-    Piezo 1 kHz, pressure/airflow 100 Hz constant-ish companions.
+    Piezo 8 kHz (open device), pressure/airflow 100 Hz constant-ish
+    companions (closed-device streams, included here to keep the
+    4-sensor path exercised).
     """
     rate = 16_000
     parts = []
@@ -38,12 +40,29 @@ def packet_with_bursts(seed=7, bursts=3, gap_ms=60, burst_ms=90):
         parts.append(np.zeros(int(rate * gap_ms / 1000), np.float32))
     mic = np.concatenate(parts)
     n_ms = mic.size / rate * 1000
-    piezo = synth_stream(1_000, n_ms, amp=0.05, seed=seed + 100)
+    piezo = synth_stream(8_000, n_ms, amp=0.05, seed=seed + 100)
     pressure = np.full(int(100 * n_ms / 1000), 3.0, np.float32)
     airflow = np.full(int(100 * n_ms / 1000), 0.2, np.float32)
     streams = {"mic": mic, "piezo": piezo,
                "pressure": pressure, "airflow": airflow}
     return parse_packet(build_packet(1, 0, streams))
+
+
+def open2_packet_with_bursts(seed=17, bursts=3, gap_ms=60, burst_ms=90):
+    """Open-device 2-sensor packet: mic + piezo only (mask 0x03).
+
+    Pressure/airflow are absent by design — windows_from_packets must
+    hand features empty arrays for them (zero-filled descriptors).
+    """
+    rate = 16_000
+    parts = []
+    for b in range(bursts):
+        parts.append(synth_stream(rate, burst_ms, seed=seed + b))
+        parts.append(np.zeros(int(rate * gap_ms / 1000), np.float32))
+    mic = np.concatenate(parts)
+    n_ms = mic.size / rate * 1000
+    piezo = synth_stream(8_000, n_ms, amp=0.05, seed=seed + 100)
+    return parse_packet(build_packet(1, 0, {"mic": mic, "piezo": piezo}))
 
 
 class TestSegmentation(unittest.TestCase):
@@ -74,6 +93,40 @@ class TestWindowsFromPackets(unittest.TestCase):
             self.assertEqual(w.piezo.size > 0, True)
             self.assertEqual(w.pressure.size > 0, True)
             self.assertEqual(w.airflow.size > 0, True)
+
+    def test_open2_windows_missing_streams_are_empty(self):
+        # Open device: only mic + piezo in the packet -> windows carry
+        # EMPTY pressure/airflow slices (never None), so downstream
+        # features zero-fill instead of crashing.
+        pkt = open2_packet_with_bursts()
+        self.assertEqual(pkt.sensor_mask, 0x03)
+        wins = windows_from_packets([pkt])
+        self.assertEqual(len(wins), 3)
+        for w in wins:
+            self.assertEqual(w.mic.size > 0, True)
+            self.assertEqual(w.piezo.size > 0, True)
+            self.assertIsNotNone(w.pressure)
+            self.assertEqual(w.pressure.size, 0)
+            self.assertIsNotNone(w.airflow)
+            self.assertEqual(w.airflow.size, 0)
+
+    def test_open2_pipeline_end_to_end_zero_fill(self):
+        # Full Layers 2-4 run on an open-device packet: pressure/airflow
+        # descriptors must be exactly 0.0 and no NaN may leak in.
+        from services.features import IDX, features_from_windows
+        pkt = open2_packet_with_bursts()
+        wins = windows_from_packets([pkt])
+        feats = features_from_windows(wins)
+        self.assertEqual(feats.matrix().shape, (3, 13))
+        for row in feats.rows:
+            self.assertEqual(row.vector[IDX["pressure_pa"]], 0.0)
+            self.assertEqual(row.vector[IDX["velocity_ms"]], 0.0)
+            self.assertTrue(np.all(np.isfinite(row.vector)))
+        # And the whole pipeline still runs to text on 2 sensors.
+        res = run_pipeline([pkt], config=PipelineConfig(classifier="demo"),
+                           tts=SilentTTS())
+        self.assertEqual(len(res.predictions), 3)
+        self.assertTrue(np.all(np.isfinite(feats.matrix())))
 
     def test_no_mic_no_windows(self):
         pkt = parse_packet(build_packet(1, 0, {"piezo": np.zeros(10, np.float32)}))

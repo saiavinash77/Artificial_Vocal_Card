@@ -13,7 +13,11 @@ models/*.tflite
 models/*.bin
 
 # Captures + generated audio (udp_capture.py / CLI smoke outputs)
-capture/
+# Exception: the deterministic demo fixture is tracked so the README
+# quickstart works on any clone. (Must ignore capture/* — a negated
+# file inside an excluded directory cannot be re-included.)
+capture/*
+!capture/demo.hex
 *.wav
 
 # ESP-IDF firmware build artifacts

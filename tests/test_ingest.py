@@ -82,9 +82,18 @@ class TestPacketRoundTrip(unittest.TestCase):
     def test_rates_pinned(self):
         parsed = parse_packet(build_packet(1, 0, self._streams()))
         self.assertEqual(parsed.stream("mic").rate_hz, 16_000)
-        self.assertEqual(parsed.stream("piezo").rate_hz, 1_000)
+        # Open device (SATHVANI doc §7): piezo ADS126x @ 8 kSPS.
+        self.assertEqual(parsed.stream("piezo").rate_hz, 8_000)
         self.assertEqual(parsed.stream("pressure").rate_hz, 100)
         self.assertEqual(parsed.stream("airflow").rate_hz, 100)
+
+    def test_open2_packet_mask(self):
+        # Open device: exactly mic + piezo -> sensor_mask 0x03, no
+        # pressure/airflow streams. Wire format itself is unchanged.
+        streams = {"mic": np.zeros(80, np.float32), "piezo": np.zeros(40, np.float32)}
+        parsed = parse_packet(build_packet(1, 0, streams))
+        self.assertEqual(parsed.sensor_mask, SENSOR_MIC | SENSOR_PIEZO)
+        self.assertEqual(set(parsed.streams), {"mic", "piezo"})
 
     def test_corrupt_crc_rejected(self):
         pkt = bytearray(build_packet(2, 99, self._streams()))

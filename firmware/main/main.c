@@ -3,8 +3,8 @@
  *
  * Architecture (TRD section 4):
  *   - One acquisition task paces everything off the 16 kHz mic clock
- *     (16 ms I2S chunks). Piezo (1 kHz) fires every 16th mic sample,
- *     pressure/airflow (100 Hz) every 160th.
+ *     (16 ms I2S chunks). Piezo (8 kHz, ADS126x via SPI) fires every 2nd
+ *     mic sample, pressure/airflow (100 Hz) every 160th.
  *   - Every 8000 mic samples (= 500 ms window) the task assembles an
  *     avc_sensor_block_t per sensor, serializes via avc_packet_build()
  *     (firmware/main/packet.c — lockstep with services/ingest.py), and
@@ -65,7 +65,7 @@
 
 static const char *TAG = "avc";
 
-/* ---- window buffers (BSS ~17.5 KB + packet buffer ~16.2 KB) ----------- */
+/* ---- window buffers (BSS ~24.2 KB + packet buffer ~23.7 KB) ----------- */
 
 static int16_t s_mic[AVC_MIC_WINDOW_MAX];
 static int16_t s_piezo[AVC_PIEZO_WINDOW_MAX];
@@ -187,8 +187,10 @@ static int16_t synth_pressure_sample(void) { return 4096; }
 static int16_t synth_airflow_sample(void)  { return -4096; }
 #else
 /* TODO: real drivers (blocked on board/pinout decision — see README).
- *   mic:      I2S std-mode RX, 16 kHz, 16-bit mono, MCLK n/a
- *   piezo:    ADC1 @ 1 kHz, scaled to int16
+ *   mic:      I2S std-mode RX, 16 kHz, 16-bit mono (ICS-43434: 24-bit
+ *             data in 32-bit frame, take top 16)
+ *   piezo:    SPI ADS126x @ 8 kSPS, 32-bit reads scaled to int16 (open
+ *             device; pins per SATHVANI doc §4.3)
  *   pressure: ADC1 @ 100 Hz (I2C sensor if the board provides one)
  *   airflow:  ADC1 @ 100 Hz
  * Each returns one int16 sample; the pacing loop below calls them at

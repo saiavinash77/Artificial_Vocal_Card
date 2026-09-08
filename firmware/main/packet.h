@@ -34,15 +34,17 @@
 #define AVC_SENSOR_AIRFLOW  0x08u
 #define AVC_SENSOR_ALL      0x0Fu
 
-/* Nominal acquisition rates (TRD 4.1) and 500 ms window sample budgets. */
+/* Nominal acquisition rates and 500 ms window sample budgets.
+ * Open device (SATHVANI doc v1.0): piezo via ADS126x at 8 kSPS
+ * (board jumpers OFF = 8 kSPS, doc §7). Closed-device TRD was 1 kHz. */
 #define AVC_MIC_RATE_HZ        16000u
-#define AVC_PIEZO_RATE_HZ       1000u
+#define AVC_PIEZO_RATE_HZ       8000u
 #define AVC_PRESSURE_RATE_HZ     100u
 #define AVC_AIRFLOW_RATE_HZ      100u
 #define AVC_WINDOW_MS            500u
 
 #define AVC_MIC_WINDOW_MAX      8000u  /* 16 kHz * 0.5 s */
-#define AVC_PIEZO_WINDOW_MAX     500u  /*  1 kHz * 0.5 s */
+#define AVC_PIEZO_WINDOW_MAX    4000u  /*  8 kHz * 0.5 s */
 #define AVC_PRESSURE_WINDOW_MAX   50u  /* 100 Hz * 0.5 s */
 #define AVC_AIRFLOW_WINDOW_MAX    50u  /* 100 Hz * 0.5 s */
 
