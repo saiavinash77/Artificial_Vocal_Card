@@ -124,4 +124,4 @@ embedded in `firmware/test/test_packet.c` (regeneration recipe in
    format?
 3. Dataset: 48-instance research data vs. new collection (count,
    speakers, sessions, labels).
-4. License for the repo (pending user choice).
+4. License: RESOLVED — Apache-2.0 (08 Sep 2026), see `LICENSE`.

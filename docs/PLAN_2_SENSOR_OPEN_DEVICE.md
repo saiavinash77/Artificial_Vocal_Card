@@ -121,8 +121,9 @@ Blocked-until-hardware: M2.2–M2.3 need the DevKitC + ADS126x module wired per 
    stays available (`udp` / `both`). `scripts/csv_logger.py` is the
    data-collection front end; `--featurize` writes M3-ready
    13-descriptor rows per rep.
-4. **License for the repo** — still unanswered; needed before outside
-   contributors / dataset sharing. MIT vs Apache-2.0?
+4. **License for the repo** — ✅ RESOLVED (08 Sep 2026): **Apache-2.0**
+   (user decision). `LICENSE` at repo root; README license section
+   updated.
 
 ## 5. Risk notes
 

@@ -85,8 +85,9 @@ firmware→UDP→Python path can be exercised with only a board.
 | `services/` | Pipeline layers 2–4 (ingest, features, inference, decoder, LM, TTS, orchestrator + CLI) |
 | `tests/` | Unittest suite — stdlib + numpy only |
 | `firmware/` | ESP32-S3 firmware (packet serializer, acquisition + UDP, host lockstep test) |
-| `scripts/` | Gateway-side utilities (`udp_capture.py`) |
+| `scripts/` | Gateway-side utilities (`csv_logger.py`, `udp_capture.py`) |
 | `models/` | Model file conventions (tracked; weights are not) |
+| `docs/` | Plans + [`DATA_FLOW_DIAGRAMS.md`](docs/DATA_FLOW_DIAGRAMS.md) (user + technical flow diagrams) |
 | `AVC_TRD_*.txt` | Original requirements document (spec source) |
 
 ## Design rules
@@ -111,4 +112,4 @@ firmware→UDP→Python path can be exercised with only a board.
 
 ## License
 
-TBD — decision pending (tracked in `IMPLEMENTATION_PLAN.md` §8).
+Apache-2.0 — see [`LICENSE`](LICENSE).
